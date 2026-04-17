@@ -1,0 +1,35 @@
+categories:
+  - title: '🚀 Features'
+    labels:
+      - 'feat'
+      - 'feature'
+      - 'enhancement'
+  - title: '🐛 Fixes'
+    labels:
+      - 'fix'
+      - 'bug'
+      - 'bugfix'
+      - 'hotfix'
+  - title: '⚡ Performance'
+    labels:
+      - 'perf'
+      - 'performance'
+  - title: '🦾 Refactoring'
+    labels:
+      - 'refactor'
+  - title: '🧪 Tests'
+    labels:
+      - 'test'
+  - title: '📚 Documentation'
+    labels:
+      - 'docs'
+      - 'documentation'
+  - title: '🧰 Maintenance'
+    labels:
+      - 'chore'
+      - 'ci'
+      - 'build'
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
+template: |
+  ## Changes
+  $CHANGES

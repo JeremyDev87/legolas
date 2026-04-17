@@ -49,9 +49,8 @@ Before opening a pull request:
 
 ```bash
 npm test
-node ./bin/legolas.js scan .
-node ./bin/legolas.js visualize .
-node ./bin/legolas.js optimize .
+npm run smoke
+npm run pack:check
 ```
 
 ## Coding Guidelines
@@ -80,5 +79,25 @@ Include:
 - why it changed
 - how it was tested
 - any follow-up work or limitations
+
+## Releases
+
+Legolas release automation uses `package.json` as the version source of truth.
+
+Typical release flow:
+
+1. Update `package.json` to the next version.
+2. Verify the CLI reports the same version with `node ./bin/legolas.js --version`.
+3. Run:
+
+```bash
+npm test
+npm run smoke
+npm run pack:check
+```
+
+4. Merge the version bump to `master`.
+5. Push a matching git tag such as `v0.1.1`.
+6. GitHub Actions validates the tag, publishes to npm, and then publishes the GitHub release.
 
 Thank you for helping make Legolas more useful and more trustworthy.
