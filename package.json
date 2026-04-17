@@ -1,0 +1,40 @@
+{
+  "name": "legolas",
+  "version": "0.1.0",
+  "description": "Slim bundles with precision.",
+  "homepage": "https://github.com/JeremyDev87/legolas#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JeremyDev87/legolas.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JeremyDev87/legolas/issues"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/JeremyDev87"
+  },
+  "type": "module",
+  "bin": {
+    "legolas": "./bin/legolas.js"
+  },
+  "scripts": {
+    "scan": "node ./bin/legolas.js scan",
+    "visualize": "node ./bin/legolas.js visualize",
+    "optimize": "node ./bin/legolas.js optimize",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "cli",
+    "bundle",
+    "performance",
+    "vite",
+    "webpack",
+    "nextjs"
+  ],
+  "author": "JeremyDev87",
+  "license": "MIT"
+}
