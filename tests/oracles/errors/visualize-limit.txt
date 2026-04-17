@@ -1,0 +1,1 @@
+legolas: --limit expects a positive integer

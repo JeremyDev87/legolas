@@ -1,0 +1,9 @@
+Legolas visualize for basic-parity-app
+
+Estimated dependency weight
+chart.js                 ████████████████████████ 160 KB
+react-icons              ██████████████           90 KB
+lodash                   ███████████              72 KB
+
+Duplicate package pressure
+lodash                   ████████████████████████ 18 KB

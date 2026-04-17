@@ -1,0 +1,9 @@
+lockfileVersion: '9.0'
+
+packages:
+  lodash@4.17.21:
+    resolution: {integrity: sha512-foo}
+  lodash@4.17.20:
+    resolution: {integrity: sha512-bar}
+  chart.js@4.4.1:
+    resolution: {integrity: sha512-baz}
