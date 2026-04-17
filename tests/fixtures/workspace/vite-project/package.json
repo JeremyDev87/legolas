@@ -1,0 +1,6 @@
+{
+  "name": "workspace-vite-project",
+  "dependencies": {
+    "react": "^18.3.0"
+  }
+}
