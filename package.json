@@ -15,6 +15,10 @@
     "url": "https://github.com/sponsors/JeremyDev87"
   },
   "type": "module",
+  "files": [
+    "bin",
+    "src"
+  ],
   "bin": {
     "legolas": "./bin/legolas.js"
   },
@@ -22,6 +26,8 @@
     "scan": "node ./bin/legolas.js scan",
     "visualize": "node ./bin/legolas.js visualize",
     "optimize": "node ./bin/legolas.js optimize",
+    "smoke": "node ./bin/legolas.js --version && node ./bin/legolas.js help && node ./bin/legolas.js scan . && node ./bin/legolas.js visualize . && node ./bin/legolas.js optimize .",
+    "pack:check": "node ./scripts/check-pack.mjs",
     "test": "node --test"
   },
   "engines": {

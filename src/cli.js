@@ -1,5 +1,6 @@
 import { analyzeProject } from "./core/analyze-project.js";
 import { formatOptimizeReport, formatScanReport, formatVisualizationReport } from "./reporters/text.js";
+import { readJsonIfExists } from "./core/workspace.js";
 
 const HELP_TEXT = `Legolas
 Slim bundles with precision.
@@ -20,7 +21,7 @@ export async function runCli(argv) {
   const { command, targetPath, flags } = parseArgv(argv);
 
   if (flags.version) {
-    console.log("0.1.0");
+    console.log(await readPackageVersion());
     return;
   }
 
@@ -104,4 +105,9 @@ function parseArgv(argv) {
   }
 
   return { command, targetPath, flags };
+}
+
+async function readPackageVersion() {
+  const packageJson = await readJsonIfExists(new URL("../package.json", import.meta.url));
+  return packageJson?.version ?? "0.0.0";
 }
