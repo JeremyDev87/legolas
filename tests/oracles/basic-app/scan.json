@@ -1,0 +1,134 @@
+{
+  "projectRoot": "<PROJECT_ROOT>",
+  "packageManager": "pnpm",
+  "frameworks": [
+    "Vite",
+    "React"
+  ],
+  "bundleArtifacts": [],
+  "packageSummary": {
+    "name": "basic-parity-app",
+    "dependencyCount": 4,
+    "devDependencyCount": 1
+  },
+  "sourceSummary": {
+    "filesScanned": 1,
+    "importedPackages": 4,
+    "dynamicImports": 0
+  },
+  "heavyDependencies": [
+    {
+      "name": "chart.js",
+      "versionRange": "^4.4.1",
+      "estimatedKb": 160,
+      "category": "charts",
+      "rationale": "Charting code is often only needed on a subset of screens.",
+      "recommendation": "Register only the chart primitives you use and lazy load dashboard surfaces.",
+      "importedBy": [
+        "src/Dashboard.tsx"
+      ],
+      "dynamicImportedBy": [],
+      "importCount": 1
+    },
+    {
+      "name": "react-icons",
+      "versionRange": "^5.2.1",
+      "estimatedKb": 90,
+      "category": "icons",
+      "rationale": "Wide icon-pack imports can defeat tree shaking.",
+      "recommendation": "Import narrowly from specific icon files or migrate to a more tree-shakable icon set.",
+      "importedBy": [
+        "src/Dashboard.tsx"
+      ],
+      "dynamicImportedBy": [],
+      "importCount": 1
+    },
+    {
+      "name": "lodash",
+      "versionRange": "^4.17.21",
+      "estimatedKb": 72,
+      "category": "utility",
+      "rationale": "Root lodash imports are a classic source of tree-shaking misses.",
+      "recommendation": "Use per-method imports or switch to lodash-es when the toolchain supports it.",
+      "importedBy": [
+        "src/Dashboard.tsx"
+      ],
+      "dynamicImportedBy": [],
+      "importCount": 1
+    }
+  ],
+  "duplicatePackages": [
+    {
+      "name": "lodash",
+      "versions": [
+        "4.17.20",
+        "4.17.21"
+      ],
+      "count": 2,
+      "estimatedExtraKb": 18
+    }
+  ],
+  "lazyLoadCandidates": [
+    {
+      "name": "chart.js",
+      "estimatedSavingsKb": 120,
+      "recommendation": "Register only the chart primitives you use and lazy load dashboard surfaces.",
+      "files": [
+        "src/Dashboard.tsx"
+      ],
+      "reason": "chart.js is statically imported in UI surfaces that usually tolerate lazy loading"
+    },
+    {
+      "name": "react-icons",
+      "estimatedSavingsKb": 68,
+      "recommendation": "Import narrowly from specific icon files or migrate to a more tree-shakable icon set.",
+      "files": [
+        "src/Dashboard.tsx"
+      ],
+      "reason": "react-icons is statically imported in UI surfaces that usually tolerate lazy loading"
+    },
+    {
+      "name": "lodash",
+      "estimatedSavingsKb": 54,
+      "recommendation": "Use per-method imports or switch to lodash-es when the toolchain supports it.",
+      "files": [
+        "src/Dashboard.tsx"
+      ],
+      "reason": "lodash is statically imported in UI surfaces that usually tolerate lazy loading"
+    }
+  ],
+  "treeShakingWarnings": [
+    {
+      "key": "lodash-root-import",
+      "packageName": "lodash",
+      "message": "Root lodash imports often keep more code than expected in client bundles.",
+      "recommendation": "Prefer per-method imports or lodash-es.",
+      "estimatedKb": 26,
+      "files": [
+        "src/Dashboard.tsx"
+      ]
+    },
+    {
+      "key": "react-icons-root-import",
+      "packageName": "react-icons",
+      "message": "Root react-icons imports can make tree shaking unreliable.",
+      "recommendation": "Import from the specific icon pack path instead.",
+      "estimatedKb": 22,
+      "files": [
+        "src/Dashboard.tsx"
+      ]
+    }
+  ],
+  "unusedDependencyCandidates": [],
+  "warnings": [],
+  "impact": {
+    "potentialKbSaved": 366,
+    "estimatedLcpImprovementMs": 769,
+    "confidence": "directional",
+    "summary": "High impact: the project has clear opportunities to reduce initial payload size."
+  },
+  "metadata": {
+    "mode": "heuristic",
+    "generatedAt": "<GENERATED_AT>"
+  }
+}

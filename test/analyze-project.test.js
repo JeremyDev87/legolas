@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { analyzeProject } from "../src/core/analyze-project.js";
+import { normalizeAnalysisForOracle, parityFixtureRoot, readOracle } from "../test-support/parity-oracles.js";
 
 test("analyzeProject reports heavy dependencies, duplicates, and tree-shaking warnings", async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "legolas-project-"));
@@ -389,4 +390,12 @@ test("analyzeProject detects duplicates from Yarn alias descriptors", async () =
   const analysis = await analyzeProject(tempRoot);
 
   assert.ok(analysis.duplicatePackages.some((item) => item.name === "lodash"));
+});
+
+test("analyzeProject matches the checked-in parity JSON oracle", async () => {
+  const analysis = await analyzeProject(parityFixtureRoot);
+  const actual = `${JSON.stringify(normalizeAnalysisForOracle(analysis), null, 2)}\n`;
+  const expected = await readOracle("basic-app", "scan.json");
+
+  assert.equal(actual, expected);
 });

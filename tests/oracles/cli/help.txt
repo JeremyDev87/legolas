@@ -1,0 +1,14 @@
+Legolas
+Slim bundles with precision.
+
+Usage:
+  legolas scan [path] [--json]
+  legolas visualize [path] [--limit 10]
+  legolas optimize [path] [--top 5]
+  legolas help
+
+Examples:
+  legolas scan .
+  legolas visualize ./apps/storefront --limit 12
+  legolas optimize --top 7
+

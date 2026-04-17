@@ -1,0 +1,1 @@
+legolas: --top expects a positive integer

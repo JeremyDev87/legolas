@@ -35,6 +35,28 @@ jobs:
       - name: Run tests
         run: npm test
 
+  rust-workspace:
+    name: Rust Workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "18.17.0"
+
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+
+      - name: Run Rust workspace tests
+        run: cargo test --workspace
+
   smoke-and-package:
     name: Smoke And Package
     runs-on: ubuntu-latest
