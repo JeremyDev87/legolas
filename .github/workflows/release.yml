@@ -1,0 +1,168 @@
+name: legolas-release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    if: github.repository == 'JeremyDev87/legolas'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Read package metadata
+        id: meta
+        run: |
+          echo "name=$(node -p 'require(\"./package.json\").name')" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release tag matches package version
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          CLI_VERSION="$(node ./bin/legolas.js --version)"
+          EXPECTED_TAG="v${PACKAGE_VERSION}"
+
+          git fetch origin refs/heads/master:refs/remotes/origin/master
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/master"; then
+            echo "Tagged commit ${GITHUB_SHA} is not reachable from origin/master"
+            exit 1
+          fi
+
+          if [ "$TAG_NAME" != "$EXPECTED_TAG" ]; then
+            echo "Expected release tag ${EXPECTED_TAG}, got ${TAG_NAME}"
+            exit 1
+          fi
+
+          if [ "$CLI_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Expected CLI version ${PACKAGE_VERSION}, got ${CLI_VERSION}"
+            exit 1
+          fi
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Create GitHub release draft
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release ${TAG_NAME} already exists"
+          else
+            gh release create "$TAG_NAME" --draft --generate-notes --title "$TAG_NAME" --verify-tag
+          fi
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests
+        run: npm test
+
+      - name: Smoke test CLI
+        run: npm run smoke
+
+      - name: Verify package tarball
+        run: npm run pack:check
+
+      - name: Read package tarball identity
+        id: package_artifact
+        run: |
+          PACK_METADATA="$(mktemp)"
+          npm pack --dry-run --json --cache ./.npm-cache > "$PACK_METADATA"
+
+          node -e '
+            const fs = require("fs");
+            const [result] = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            console.log(`integrity=${result.integrity ?? ""}`);
+            console.log(`shasum=${result.shasum ?? ""}`);
+          ' "$PACK_METADATA" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm
+        run: |
+          PUBLISH_LOG="$(mktemp)"
+
+          if npm publish --access public --provenance >"$PUBLISH_LOG" 2>&1; then
+            cat "$PUBLISH_LOG"
+            exit 0
+          fi
+
+          cat "$PUBLISH_LOG"
+
+          for attempt in 1 2 3 4 5; do
+            PUBLISHED_VERSION="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version 2>/dev/null || true)"
+            REGISTRY_INTEGRITY="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" dist.integrity 2>/dev/null || true)"
+            REGISTRY_SHASUM="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" dist.shasum 2>/dev/null || true)"
+            MATCHES_INTEGRITY=false
+            MATCHES_SHASUM=false
+
+            if [ -n "$LOCAL_INTEGRITY" ] && [ "$REGISTRY_INTEGRITY" = "$LOCAL_INTEGRITY" ]; then
+              MATCHES_INTEGRITY=true
+            fi
+
+            if [ -n "$LOCAL_SHASUM" ] && [ "$REGISTRY_SHASUM" = "$LOCAL_SHASUM" ]; then
+              MATCHES_SHASUM=true
+            fi
+
+            if [ "$PUBLISHED_VERSION" = "$PACKAGE_VERSION" ] && {
+              [ "$MATCHES_INTEGRITY" = "true" ] || [ "$MATCHES_SHASUM" = "true" ];
+            }; then
+              echo "Confirmed package ${PACKAGE_NAME}@${PACKAGE_VERSION} exists on npm with matching artifact identity; continuing."
+              exit 0
+            fi
+
+            if [ "$PUBLISHED_VERSION" = "$PACKAGE_VERSION" ] && {
+              [ -n "$REGISTRY_INTEGRITY" ] || [ -n "$REGISTRY_SHASUM" ];
+            }; then
+              echo "Package ${PACKAGE_NAME}@${PACKAGE_VERSION} exists on npm, but its artifact identity does not match this checkout."
+              echo "Local integrity: ${LOCAL_INTEGRITY:-<empty>}"
+              echo "Registry integrity: ${REGISTRY_INTEGRITY:-<empty>}"
+              echo "Local shasum: ${LOCAL_SHASUM:-<empty>}"
+              echo "Registry shasum: ${REGISTRY_SHASUM:-<empty>}"
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          exit 1
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          LOCAL_INTEGRITY: ${{ steps.package_artifact.outputs.integrity }}
+          LOCAL_SHASUM: ${{ steps.package_artifact.outputs.shasum }}
+          PACKAGE_NAME: ${{ steps.meta.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.meta.outputs.version }}
+
+      - name: Publish GitHub release
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          RELEASE_ID="$(gh release view "$TAG_NAME" --json id --jq .id)"
+
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -f draft=false \
+            -f make_latest=true \
+            -f name="${TAG_NAME}"
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
