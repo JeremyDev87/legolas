@@ -1,0 +1,20 @@
+lockfileVersion: '9.0'
+
+packages:
+  '/lodash@4.17.20':
+    resolution: {integrity: sha512-a}
+  /lodash@4.17.21:
+    resolution: {integrity: sha512-b}
+  /react-dom@18.2.0(react@18.2.0):
+    resolution: {integrity: sha512-c}
+
+snapshots:
+  /kleur@4.1.4:
+    dependencies: {}
+  /lodash@4.17.21:
+    dependencies: {}
+
+importers:
+  .:
+    dependencies:
+      lodash: 4.17.21

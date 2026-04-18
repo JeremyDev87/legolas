@@ -1,0 +1,4 @@
+{
+  "name": "yarn-berry-fixture",
+  "packageManager": "yarn@4.1.1"
+}
