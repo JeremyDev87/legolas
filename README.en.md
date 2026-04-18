@@ -10,7 +10,7 @@
 
 Slim bundles with precision.
 
-Legolas is a zero-dependency CLI that inspects modern web projects for bundle weight, duplicate packages, tree-shaking misses, and lazy-loading opportunities.
+Legolas is a Rust-powered CLI, shipped through npm with native binaries, that inspects modern web projects for bundle weight, duplicate packages, tree-shaking misses, and lazy-loading opportunities.
 
 ## Why Legolas
 
@@ -34,9 +34,9 @@ npx legolas optimize
 You can also point Legolas at a specific project path:
 
 ```bash
-node ./bin/legolas.js scan ./apps/storefront
-node ./bin/legolas.js visualize . --limit 12
-node ./bin/legolas.js optimize . --top 7
+cargo run -p legolas-cli -- scan ./apps/storefront
+cargo run -p legolas-cli -- visualize . --limit 12
+cargo run -p legolas-cli -- optimize . --top 7
 ```
 
 ## What The Current MVP Does
@@ -66,8 +66,8 @@ Medium impact: there are several meaningful bundle wins available.
 ## Development
 
 ```bash
-npm test
-node ./bin/legolas.js help
+cargo test --workspace
+cargo run -p legolas-cli -- help
 ```
 
 ## Open Source
@@ -81,4 +81,5 @@ node ./bin/legolas.js help
 ## Notes
 
 - The current release is heuristic-first. If bundle artifacts such as `stats.json` or `meta.json` exist, Legolas detects them, but full artifact-native analysis is still the next natural step.
-- The CLI intentionally avoids external runtime dependencies so contributors can clone and run it immediately.
+- The current npm package ships prebuilt binaries for macOS `x64/arm64`, Linux `x64` glibc, and Windows `x64`.
+- The npm package ships platform-specific Rust binaries under `vendor/<triple>/legolas[.exe]`, while contributor workflows use `cargo run -p legolas-cli -- ...` as the source of truth.

@@ -11,7 +11,7 @@ Examples:
 
 This directory is intentionally kept empty in git except for this README.
 Release workflows populate it transiently before uploading release assets, and
-the npm cutover later uses the same layout.
+the npm launcher uses the same layout when packaging platform binaries.
 
 Local staging flow:
 

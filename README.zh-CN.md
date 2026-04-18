@@ -10,7 +10,7 @@
 
 Slim bundles with precision.
 
-Legolas 是一个零运行时依赖的 CLI，用来检查现代 Web 项目的打包体积、重复依赖、tree-shaking 漏损以及 lazy loading 优化机会。
+Legolas 是一个由 Rust 驱动、通过 npm 分发原生二进制的 CLI，用来检查现代 Web 项目的打包体积、重复依赖、tree-shaking 漏损以及 lazy loading 优化机会。
 
 ## 为什么选择 Legolas
 
@@ -34,9 +34,9 @@ npx legolas optimize
 也可以直接指定某个项目路径进行分析：
 
 ```bash
-node ./bin/legolas.js scan ./apps/storefront
-node ./bin/legolas.js visualize . --limit 12
-node ./bin/legolas.js optimize . --top 7
+cargo run -p legolas-cli -- scan ./apps/storefront
+cargo run -p legolas-cli -- visualize . --limit 12
+cargo run -p legolas-cli -- optimize . --top 7
 ```
 
 ## 当前 MVP 的能力
@@ -66,8 +66,8 @@ Medium impact: there are several meaningful bundle wins available.
 ## 开发
 
 ```bash
-npm test
-node ./bin/legolas.js help
+cargo test --workspace
+cargo run -p legolas-cli -- help
 ```
 
 ## 开源信息
@@ -81,4 +81,5 @@ node ./bin/legolas.js help
 ## 说明
 
 - 当前版本以启发式分析为主。如果项目中存在 `stats.json`、`meta.json` 之类的打包产物，Legolas 会识别到它们，但完整的 artifact-native 精确分析仍是下一阶段的自然扩展。
-- 这个 CLI 有意避免引入运行时外部依赖，方便贡献者 clone 后立即运行。
+- 当前 npm 发布物提供 macOS `x64/arm64`、Linux `x64` glibc、Windows `x64` 的预构建二进制。
+- npm 发布物会把各平台 Rust 二进制放在 `vendor/<triple>/legolas[.exe]` 下，而仓库贡献路径则以 `cargo run -p legolas-cli -- ...` 为准。

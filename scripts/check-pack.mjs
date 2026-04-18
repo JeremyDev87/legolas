@@ -6,15 +6,24 @@ const projectRoot = fileURLToPath(new URL("..", import.meta.url));
 
 const rootAllowlist = new Set(["LICENSE", "package.json"]);
 const rootReadmePattern = /^README(\.[^.]+)?\.md$/i;
-const packageDirs = ["bin", "src"];
+const packageDirs = ["bin", "vendor"];
+const vendorReadmePath = "vendor/README.md";
+const vendorBinaryPattern = /^vendor\/[^/]+\/legolas(?:\.exe)?$/;
 
 const expectedFiles = new Set(await collectExpectedFiles());
 const packedFiles = await collectPackedFiles();
+const invalidVendorFiles = packedFiles.filter(isInvalidVendorFile);
+const stagedVendorBinaries = packedFiles.filter((filePath) => vendorBinaryPattern.test(filePath));
 
 const unexpectedFiles = packedFiles.filter((filePath) => !expectedFiles.has(filePath));
 const missingFiles = [...expectedFiles].filter((filePath) => !packedFiles.includes(filePath));
 
-if (unexpectedFiles.length > 0 || missingFiles.length > 0) {
+if (
+  unexpectedFiles.length > 0 ||
+  missingFiles.length > 0 ||
+  invalidVendorFiles.length > 0 ||
+  stagedVendorBinaries.length === 0
+) {
   console.error("Package contents validation failed.");
 
   if (unexpectedFiles.length > 0) {
@@ -29,6 +38,17 @@ if (unexpectedFiles.length > 0 || missingFiles.length > 0) {
     for (const filePath of missingFiles) {
       console.error(`- ${filePath}`);
     }
+  }
+
+  if (invalidVendorFiles.length > 0) {
+    console.error("Invalid vendor layout files:");
+    for (const filePath of invalidVendorFiles) {
+      console.error(`- ${filePath}`);
+    }
+  }
+
+  if (stagedVendorBinaries.length === 0) {
+    console.error("Missing staged vendor binary under vendor/<triple>/legolas[.exe].");
   }
 
   process.exit(1);
@@ -98,6 +118,10 @@ async function collectPackedFiles() {
 
 function toPosixPath(filePath) {
   return filePath.split(path.sep).join("/");
+}
+
+function isInvalidVendorFile(filePath) {
+  return filePath.startsWith("vendor/") && filePath !== vendorReadmePath && !vendorBinaryPattern.test(filePath);
 }
 
 function runPackCommand() {
