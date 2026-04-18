@@ -229,7 +229,11 @@ fn build_actions(analysis: &Analysis) -> Vec<String> {
     }
 
     for candidate in analysis.lazy_load_candidates.iter().take(3) {
-        let file = candidate.files.first().cloned().unwrap_or_default();
+        let file = candidate
+            .files
+            .first()
+            .map(String::as_str)
+            .unwrap_or("undefined");
         actions.push(format!(
             "Lazy load {} in {} to target roughly {} KB of deferred code.",
             candidate.name, file, candidate.estimated_savings_kb
