@@ -1,0 +1,15 @@
+__metadata:
+  version: 8
+  cacheKey: 10
+
+"lodash@npm:^4.17.20":
+  version: "4.17.20"
+  resolution: "lodash@npm:4.17.20"
+
+"lodash@npm:^4.17.21":
+  version: "4.17.21"
+  resolution: "lodash@npm:4.17.21"
+
+"react@npm:^18.2.0":
+  version: "18.2.0"
+  resolution: "react@npm:18.2.0"
