@@ -51,8 +51,14 @@ jobs:
 
       - name: Setup Rust toolchain
         run: |
-          rustup toolchain install 1.95.0 --profile minimal
+          rustup toolchain install 1.95.0 --profile minimal --component clippy --component rustfmt
           rustup default 1.95.0
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run Rust workspace tests
         run: cargo test --workspace

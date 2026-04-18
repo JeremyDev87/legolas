@@ -170,7 +170,8 @@ fn warns_when_bun_lockfile_is_selected_because_parsing_is_not_supported() {
 
     fs::write(&bun_lockb_path, [0_u8, 255, 42]).expect("write bun lockb fixture");
 
-    let analysis = parse_duplicate_packages(temp_dir.path(), "bun@1.1.8").expect("parse bun lockfile");
+    let analysis =
+        parse_duplicate_packages(temp_dir.path(), "bun@1.1.8").expect("parse bun lockfile");
 
     assert_eq!(
         analysis,
@@ -192,7 +193,8 @@ fn prefers_text_bun_lock_when_both_bun_lockfiles_exist() {
     fs::write(&bun_lock_path, "placeholder bun text lock").expect("write bun lock fixture");
     fs::write(&bun_lockb_path, [0_u8, 255, 42]).expect("write bun lockb fixture");
 
-    let analysis = parse_duplicate_packages(temp_dir.path(), "bun@1.2.0").expect("parse bun lockfiles");
+    let analysis =
+        parse_duplicate_packages(temp_dir.path(), "bun@1.2.0").expect("parse bun lockfiles");
 
     assert_eq!(
         analysis,
@@ -268,16 +270,7 @@ fn skips_empty_versions_in_package_lock_v1_dependencies() {
 #[test]
 fn sorts_versions_like_js_locale_compare_numeric() {
     let input_versions = vec![
-        "1",
-        "01",
-        "1.0.0",
-        "1.0.00",
-        "1.2.0",
-        "1.02.0",
-        "1.2.2",
-        "1.2.10",
-        "a1",
-        "A1",
+        "1", "01", "1.0.0", "1.0.00", "1.2.0", "1.02.0", "1.2.2", "1.2.10", "a1", "A1",
     ];
     let temp_dir = tempdir().expect("create temp dir");
     let package_lock_path = temp_dir.path().join("package-lock.json");

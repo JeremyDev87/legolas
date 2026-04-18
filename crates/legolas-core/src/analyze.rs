@@ -1,4 +1,5 @@
 use std::{
+    cmp::Reverse,
     fs,
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -38,9 +39,8 @@ const KNOWN_BUNDLE_ARTIFACTS: [&str; 5] = [
 
 pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
     let project_root = find_project_root(input_path)?;
-    let manifest: Value = read_json_if_exists(project_root.join("package.json"))?.ok_or_else(|| {
-        LegolasError::PackageJsonMissing(project_root.display().to_string())
-    })?;
+    let manifest: Value = read_json_if_exists(project_root.join("package.json"))?
+        .ok_or_else(|| LegolasError::PackageJsonMissing(project_root.display().to_string()))?;
 
     let package_manager = detect_package_manager(&project_root, &manifest)?;
     let frameworks = detect_frameworks(&project_root, &manifest)?;
@@ -73,7 +73,10 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
         duplicate_packages: duplicate_analysis.duplicates,
         lazy_load_candidates,
         tree_shaking_warnings,
-        unused_dependency_candidates: build_unused_dependency_candidates(&manifest, &source_analysis),
+        unused_dependency_candidates: build_unused_dependency_candidates(
+            &manifest,
+            &source_analysis,
+        ),
         warnings: duplicate_analysis.warnings,
         impact,
         metadata: Metadata {
@@ -126,7 +129,9 @@ fn build_heavy_dependency_report(
             category: intel.category.to_string(),
             rationale: intel.rationale.to_string(),
             recommendation: intel.recommendation.to_string(),
-            imported_by: import_info.map(|item| item.files.clone()).unwrap_or_default(),
+            imported_by: import_info
+                .map(|item| item.files.clone())
+                .unwrap_or_default(),
             dynamic_imported_by: import_info
                 .map(|item| item.dynamic_files.clone())
                 .unwrap_or_default(),
@@ -134,7 +139,7 @@ fn build_heavy_dependency_report(
         });
     }
 
-    heavy_dependencies.sort_by(|left, right| right.estimated_kb.cmp(&left.estimated_kb));
+    heavy_dependencies.sort_by_key(|item| Reverse(item.estimated_kb));
     heavy_dependencies
 }
 
@@ -151,8 +156,9 @@ fn merged_dependency_entries(manifest: &Value) -> Vec<(String, String)> {
                 continue;
             };
 
-            if let Some((_, existing_range)) =
-                entries.iter_mut().find(|(existing_name, _)| existing_name == name)
+            if let Some((_, existing_range)) = entries
+                .iter_mut()
+                .find(|(existing_name, _)| existing_name == name)
             {
                 *existing_range = version_range.to_string();
                 continue;
@@ -203,13 +209,13 @@ fn build_lazy_load_candidates(
         });
     }
 
-    candidates.sort_by(|left, right| right.estimated_savings_kb.cmp(&left.estimated_savings_kb));
+    candidates.sort_by_key(|item| Reverse(item.estimated_savings_kb));
     candidates
 }
 
 fn build_tree_shaking_warnings(source_analysis: &SourceAnalysis) -> Vec<TreeShakingWarning> {
     let mut warnings = source_analysis.tree_shaking_warnings.clone();
-    warnings.sort_by(|left, right| right.estimated_kb.cmp(&left.estimated_kb));
+    warnings.sort_by_key(|item| Reverse(item.estimated_kb));
     warnings
 }
 
@@ -278,9 +284,7 @@ fn format_iso8601_utc(duration: Duration) -> String {
     let minute = (seconds_of_day % 3_600) / 60;
     let second = seconds_of_day % 60;
 
-    format!(
-        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{milliseconds:03}Z"
-    )
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{milliseconds:03}Z")
 }
 
 fn civil_from_days(days_since_unix_epoch: i64) -> (i32, u32, u32) {

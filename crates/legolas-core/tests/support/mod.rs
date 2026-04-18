@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use legolas_core::Analysis;
 
+#[allow(dead_code)]
 pub fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -10,15 +11,18 @@ pub fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+#[allow(dead_code)]
 pub fn fixture_path(relative_path: &str) -> PathBuf {
     workspace_root().join(relative_path)
 }
 
+#[allow(dead_code)]
 pub fn read_oracle(relative_path: &str) -> String {
     std::fs::read_to_string(workspace_root().join("tests/oracles").join(relative_path))
         .expect("read oracle")
 }
 
+#[allow(dead_code)]
 pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
     let mut normalized = analysis.clone();
 
@@ -62,6 +66,7 @@ pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
     )
 }
 
+#[allow(dead_code)]
 fn to_posix(value: String) -> String {
     value.replace('\\', "/")
 }
