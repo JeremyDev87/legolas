@@ -121,7 +121,11 @@ fn matches_validation_error_oracles() {
             .expect("run command");
 
         assert!(!output.status.success(), "expected failure for {oracle}");
-        assert_eq!(output.status.code(), Some(1), "expected exit code 1 for {oracle}");
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "expected exit code 1 for {oracle}"
+        );
         assert_eq!(String::from_utf8(output.stdout).expect("stdout"), "");
         assert_eq!(
             support::normalize_cli_output(&String::from_utf8(output.stderr).expect("stderr")),

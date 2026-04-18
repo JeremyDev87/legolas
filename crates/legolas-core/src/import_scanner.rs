@@ -202,7 +202,7 @@ fn ensure_directory_exists(path: &Path) -> Result<()> {
 
 fn walk(current_path: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     let mut entries = fs::read_dir(current_path)?.collect::<std::io::Result<Vec<_>>>()?;
-    entries.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
+    entries.sort_by_key(|entry| entry.file_name());
 
     for entry in entries {
         let absolute_path = entry.path();

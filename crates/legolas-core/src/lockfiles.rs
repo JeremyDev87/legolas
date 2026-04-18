@@ -156,7 +156,10 @@ fn collect_from_package_lock(package_lock: Option<Value>) -> VersionsByName {
         return versions_by_name;
     };
 
-    if let Some(packages) = package_lock_object.get("packages").and_then(Value::as_object) {
+    if let Some(packages) = package_lock_object
+        .get("packages")
+        .and_then(Value::as_object)
+    {
         if !packages.is_empty() {
             for (package_path, metadata) in packages {
                 let Some(version) = metadata
@@ -526,9 +529,7 @@ fn starts_with_ascii_alpha(value: &str) -> bool {
 
 fn strip_wrapping_quotes(value: &str) -> &str {
     let trimmed_prefix = value.strip_prefix('"').unwrap_or(value);
-    trimmed_prefix
-        .strip_suffix('"')
-        .unwrap_or(trimmed_prefix)
+    trimmed_prefix.strip_suffix('"').unwrap_or(trimmed_prefix)
 }
 
 fn unsupported_bun_lockfile_warning(lockfile: &Lockfile) -> String {

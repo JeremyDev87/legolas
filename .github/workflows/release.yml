@@ -10,10 +10,14 @@ permissions:
   id-token: write
 
 jobs:
-  publish:
+  prepare-release:
     if: github.repository == 'JeremyDev87/legolas'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      package_name: ${{ steps.meta.outputs.name }}
+      package_version: ${{ steps.meta.outputs.version }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
 
     steps:
       - name: Checkout code
@@ -32,6 +36,7 @@ jobs:
         run: |
           echo "name=$(node -p 'require(\"./package.json\").name')" >> "$GITHUB_OUTPUT"
           echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - name: Verify release tag matches package version
         run: |
@@ -72,6 +77,90 @@ jobs:
         env:
           GITHUB_REF: ${{ github.ref }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  rust-release-binaries:
+    if: github.repository == 'JeremyDev87/legolas'
+    needs: prepare-release
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary_name: legolas
+            asset_name: legolas-x86_64-unknown-linux-gnu
+          - runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: legolas.exe
+            asset_name: legolas-x86_64-pc-windows-msvc.exe
+          - runs-on: macos-13
+            target: x86_64-apple-darwin
+            binary_name: legolas
+            asset_name: legolas-x86_64-apple-darwin
+          - runs-on: macos-14
+            target: aarch64-apple-darwin
+            binary_name: legolas
+            asset_name: legolas-aarch64-apple-darwin
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+
+      - name: Build Rust release binary
+        run: cargo build --release -p legolas-cli
+
+      - name: Stage vendor layout
+        run: node ./scripts/stage-local-vendor-binary.mjs
+
+      - name: Verify vendor layout
+        run: node ./scripts/verify-vendor-layout.mjs ${{ matrix.target }}
+
+      - name: Copy release asset
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          cp "vendor/${{ matrix.target }}/${{ matrix.binary_name }}" "release-assets/${{ matrix.asset_name }}"
+
+      - name: Upload binary asset to release draft
+        run: gh release upload "${{ needs.prepare-release.outputs.tag_name }}" "release-assets/${{ matrix.asset_name }}" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    if: github.repository == 'JeremyDev87/legolas'
+    needs: [prepare-release, rust-release-binaries]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Read package metadata
+        id: meta
+        run: |
+          echo "name=$(node -p 'require(\"./package.json\").name')" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
 
       - name: Run tests
         run: npm test
@@ -152,7 +241,7 @@ jobs:
 
       - name: Publish GitHub release
         run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          TAG_NAME="${{ needs.prepare-release.outputs.tag_name }}"
           RELEASE_ID="$(gh release view "$TAG_NAME" --json id --jq .id)"
 
           gh api \
@@ -163,6 +252,5 @@ jobs:
             -f make_latest=true \
             -f name="${TAG_NAME}"
         env:
-          GITHUB_REF: ${{ github.ref }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

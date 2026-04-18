@@ -37,7 +37,10 @@ fn analyze_project_switches_to_artifact_assisted_mode_only_for_real_files() {
     let analysis = analyze_project(root).expect("analyze project");
 
     assert_eq!(analysis.metadata.mode, "artifact-assisted");
-    assert_eq!(analysis.bundle_artifacts, vec!["dist/stats.json".to_string()]);
+    assert_eq!(
+        analysis.bundle_artifacts,
+        vec!["dist/stats.json".to_string()]
+    );
 }
 
 #[test]

@@ -25,7 +25,10 @@ fn matches_scan_visualize_and_optimize_oracles() {
         format_visualization_report(&analysis, 10),
         "basic-app/visualize.txt",
     );
-    assert_report_matches_oracle(format_optimize_report(&analysis, 5), "basic-app/optimize.txt");
+    assert_report_matches_oracle(
+        format_optimize_report(&analysis, 5),
+        "basic-app/optimize.txt",
+    );
 }
 
 #[test]
@@ -97,8 +100,7 @@ fn optimize_and_visualize_reports_clamp_zero_limits_and_cover_lazy_load_fallback
         potential_kb_saved: 42,
         estimated_lcp_improvement_ms: 88,
         confidence: "directional".to_string(),
-        summary: "Targeted impact: a handful of focused optimizations should pay off."
-            .to_string(),
+        summary: "Targeted impact: a handful of focused optimizations should pay off.".to_string(),
     };
     optimize_analysis.lazy_load_candidates = vec![LazyLoadCandidate {
         name: "chart.js".to_string(),
