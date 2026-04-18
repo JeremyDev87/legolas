@@ -10,7 +10,7 @@
 
 Slim bundles with precision.
 
-Legolas es una CLI sin dependencias de runtime que inspecciona proyectos web modernos para detectar peso de bundle, paquetes duplicados, fallos de tree-shaking y oportunidades de lazy loading.
+Legolas es una CLI impulsada por Rust, distribuida por npm con binarios nativos, que inspecciona proyectos web modernos para detectar peso de bundle, paquetes duplicados, fallos de tree-shaking y oportunidades de lazy loading.
 
 ## Por Qué Legolas
 
@@ -34,9 +34,9 @@ npx legolas optimize
 También puedes analizar una ruta de proyecto específica:
 
 ```bash
-node ./bin/legolas.js scan ./apps/storefront
-node ./bin/legolas.js visualize . --limit 12
-node ./bin/legolas.js optimize . --top 7
+cargo run -p legolas-cli -- scan ./apps/storefront
+cargo run -p legolas-cli -- visualize . --limit 12
+cargo run -p legolas-cli -- optimize . --top 7
 ```
 
 ## Qué Hace El MVP Actual
@@ -66,8 +66,8 @@ Medium impact: there are several meaningful bundle wins available.
 ## Desarrollo
 
 ```bash
-npm test
-node ./bin/legolas.js help
+cargo test --workspace
+cargo run -p legolas-cli -- help
 ```
 
 ## Código Abierto
@@ -81,4 +81,5 @@ node ./bin/legolas.js help
 ## Notas
 
 - La versión actual es principalmente heurística. Si existen artefactos de bundle como `stats.json` o `meta.json`, Legolas los detecta, pero el análisis completo basado en artifacts sigue siendo el siguiente paso natural.
-- La CLI evita a propósito dependencias externas de runtime para que cualquier colaborador pueda clonar y ejecutarla de inmediato.
+- El paquete npm actual distribuye binarios precompilados para macOS `x64/arm64`, Linux `x64` con glibc y Windows `x64`.
+- El paquete npm distribuye binarios Rust por plataforma bajo `vendor/<triple>/legolas[.exe]`, mientras que la ruta de contribución del repositorio usa `cargo run -p legolas-cli -- ...` como referencia.

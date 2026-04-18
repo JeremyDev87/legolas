@@ -17,18 +17,28 @@
   "type": "module",
   "files": [
     "bin",
-    "src"
+    "vendor"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
   ],
   "bin": {
     "legolas": "./bin/legolas.js"
   },
   "scripts": {
-    "scan": "node ./bin/legolas.js scan",
-    "visualize": "node ./bin/legolas.js visualize",
-    "optimize": "node ./bin/legolas.js optimize",
-    "smoke": "node ./bin/legolas.js --version && node ./bin/legolas.js help && node ./bin/legolas.js scan . && node ./bin/legolas.js visualize . && node ./bin/legolas.js optimize .",
+    "preinstall": "node ./bin/preinstall-check.js",
+    "scan": "cargo run -p legolas-cli -- scan",
+    "visualize": "cargo run -p legolas-cli -- visualize",
+    "optimize": "cargo run -p legolas-cli -- optimize",
+    "smoke": "cargo run -p legolas-cli -- --version && cargo run -p legolas-cli -- help && cargo run -p legolas-cli -- scan . && cargo run -p legolas-cli -- visualize . && cargo run -p legolas-cli -- optimize .",
     "pack:check": "node ./scripts/check-pack.mjs",
-    "test": "node --test"
+    "test": "cargo test --workspace"
   },
   "engines": {
     "node": ">=18.17"

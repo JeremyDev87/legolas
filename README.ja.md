@@ -10,7 +10,7 @@
 
 Slim bundles with precision.
 
-Legolas は、モダンな Web プロジェクトのバンドルサイズ、重複パッケージ、tree-shaking の取りこぼし、lazy loading の余地を点検する zero-dependency CLI です。
+Legolas は、npm パッケージ内に native Rust binary を同梱して配布する CLI で、モダンな Web プロジェクトのバンドルサイズ、重複パッケージ、tree-shaking の取りこぼし、lazy loading の余地を点検します。
 
 ## なぜ Legolas か
 
@@ -34,9 +34,9 @@ npx legolas optimize
 特定のプロジェクトパスを直接指定して解析することもできます。
 
 ```bash
-node ./bin/legolas.js scan ./apps/storefront
-node ./bin/legolas.js visualize . --limit 12
-node ./bin/legolas.js optimize . --top 7
+cargo run -p legolas-cli -- scan ./apps/storefront
+cargo run -p legolas-cli -- visualize . --limit 12
+cargo run -p legolas-cli -- optimize . --top 7
 ```
 
 ## 現在の MVP でできること
@@ -66,8 +66,8 @@ Medium impact: there are several meaningful bundle wins available.
 ## 開発
 
 ```bash
-npm test
-node ./bin/legolas.js help
+cargo test --workspace
+cargo run -p legolas-cli -- help
 ```
 
 ## オープンソース
@@ -81,4 +81,5 @@ node ./bin/legolas.js help
 ## 補足
 
 - 現在のリリースは heuristic-first な方針です。`stats.json` や `meta.json` のようなバンドル成果物があれば存在は検出しますが、artifact-native の本格解析は次の自然な拡張です。
-- この CLI は、コントリビューターが clone してすぐ実行できるように、ランタイム外部依存を意図的に避けています。
+- 現在の npm 配布物の prebuilt binary は macOS `x64/arm64`、Linux `x64` glibc、Windows `x64` をサポートします。
+- npm 配布物は `vendor/<triple>/legolas[.exe]` layout で platform ごとの Rust binary を含み、repository 側の contributor path は `cargo run -p legolas-cli -- ...` を基準にします。

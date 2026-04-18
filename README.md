@@ -10,7 +10,7 @@
 
 Slim bundles with precision.
 
-> Quick Overview (EN): Legolas is a zero-dependency CLI for analyzing bundle weight, duplicate packages, tree-shaking misses, and lazy-loading opportunities in modern web projects.
+> Quick Overview (EN): Legolas is a Rust-powered CLI, shipped through npm with native binaries, for analyzing bundle weight, duplicate packages, tree-shaking misses, and lazy-loading opportunities in modern web projects.
 >
 > Quick Start:
 > ```bash
@@ -19,7 +19,7 @@ Slim bundles with precision.
 > npx legolas optimize
 > ```
 
-Legolas는 최신 웹 프로젝트의 번들 크기, 중복 패키지, tree-shaking 누수, lazy loading 기회를 점검하는 zero-dependency CLI입니다.
+Legolas는 npm package 안에 native Rust binary를 담아 배포하는 CLI로, 최신 웹 프로젝트의 번들 크기, 중복 패키지, tree-shaking 누수, lazy loading 기회를 점검합니다.
 
 ## 왜 Legolas인가
 
@@ -43,9 +43,9 @@ npx legolas optimize
 특정 프로젝트 경로를 직접 넘겨서 분석할 수도 있습니다.
 
 ```bash
-node ./bin/legolas.js scan ./apps/storefront
-node ./bin/legolas.js visualize . --limit 12
-node ./bin/legolas.js optimize . --top 7
+cargo run -p legolas-cli -- scan ./apps/storefront
+cargo run -p legolas-cli -- visualize . --limit 12
+cargo run -p legolas-cli -- optimize . --top 7
 ```
 
 ## 현재 MVP가 하는 일
@@ -75,8 +75,8 @@ Medium impact: there are several meaningful bundle wins available.
 ## 개발
 
 ```bash
-npm test
-node ./bin/legolas.js help
+cargo test --workspace
+cargo run -p legolas-cli -- help
 ```
 
 ## 오픈소스
@@ -90,4 +90,5 @@ node ./bin/legolas.js help
 ## 참고
 
 - 현재 릴리스는 heuristic-first 접근입니다. `stats.json`, `meta.json` 같은 번들 산출물이 있으면 존재는 감지하지만, artifact-native 정밀 분석은 다음 단계의 자연스러운 확장입니다.
-- 이 CLI는 기여자가 바로 clone 해서 실행할 수 있도록 런타임 외부 의존성을 두지 않는 방향을 유지합니다.
+- 현재 npm 배포본의 prebuilt binary는 macOS `x64/arm64`, Linux `x64` glibc, Windows `x64`만 지원합니다.
+- npm 배포본은 `vendor/<triple>/legolas[.exe]` layout으로 platform별 Rust binary를 싣고, repository contributor path는 `cargo run -p legolas-cli -- ...`를 기준으로 유지합니다.

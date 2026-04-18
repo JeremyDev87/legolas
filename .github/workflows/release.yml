@@ -31,6 +31,11 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+
       - name: Read package metadata
         id: meta
         run: |
@@ -42,7 +47,7 @@ jobs:
         run: |
           TAG_NAME="${GITHUB_REF#refs/tags/}"
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          CLI_VERSION="$(node ./bin/legolas.js --version)"
+          CLI_VERSION="$(cargo run -q -p legolas-cli -- --version)"
           EXPECTED_TAG="v${PACKAGE_VERSION}"
 
           git fetch origin refs/heads/master:refs/remotes/origin/master
@@ -127,6 +132,15 @@ jobs:
       - name: Verify vendor layout
         run: node ./scripts/verify-vendor-layout.mjs ${{ matrix.target }}
 
+      - name: Run launcher platform contract tests
+        run: node --test test/launcher-platform.test.js
+
+      - name: Smoke test packaged launcher on runner host
+        run: |
+          node ./bin/legolas.js --version
+          node ./bin/legolas.js help
+          node ./bin/legolas.js scan tests/fixtures/parity/basic-app
+
       - name: Copy release asset
         shell: bash
         run: |
@@ -156,6 +170,44 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+
+      - name: Download staged release binaries
+        shell: bash
+        run: |
+          mkdir -p release-assets
+
+          gh release download "${{ needs.prepare-release.outputs.tag_name }}" \
+            --pattern "legolas-*" \
+            --dir release-assets
+
+          mkdir -p vendor/x86_64-unknown-linux-gnu
+          mkdir -p vendor/x86_64-pc-windows-msvc
+          mkdir -p vendor/x86_64-apple-darwin
+          mkdir -p vendor/aarch64-apple-darwin
+
+          cp release-assets/legolas-x86_64-unknown-linux-gnu vendor/x86_64-unknown-linux-gnu/legolas
+          cp release-assets/legolas-x86_64-pc-windows-msvc.exe vendor/x86_64-pc-windows-msvc/legolas.exe
+          cp release-assets/legolas-x86_64-apple-darwin vendor/x86_64-apple-darwin/legolas
+          cp release-assets/legolas-aarch64-apple-darwin vendor/aarch64-apple-darwin/legolas
+
+          chmod 755 vendor/x86_64-unknown-linux-gnu/legolas
+          chmod 755 vendor/x86_64-apple-darwin/legolas
+          chmod 755 vendor/aarch64-apple-darwin/legolas
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify vendor layout
+        run: |
+          node ./scripts/verify-vendor-layout.mjs \
+            x86_64-unknown-linux-gnu \
+            x86_64-pc-windows-msvc \
+            x86_64-apple-darwin \
+            aarch64-apple-darwin
+
       - name: Read package metadata
         id: meta
         run: |
@@ -167,6 +219,12 @@ jobs:
 
       - name: Smoke test CLI
         run: npm run smoke
+
+      - name: Smoke test packaged launcher
+        run: |
+          node ./bin/legolas.js --version
+          node ./bin/legolas.js help
+          node ./bin/legolas.js scan tests/fixtures/parity/basic-app
 
       - name: Verify package tarball
         run: npm run pack:check

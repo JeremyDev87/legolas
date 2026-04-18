@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-matrix:
-    name: Node ${{ matrix.node-version }} test
+  node-launcher-matrix:
+    name: Node ${{ matrix.node-version }} launcher
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -32,8 +32,27 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Run tests
-        run: npm test
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+
+      - name: Build Rust release binary
+        run: cargo build --release -p legolas-cli
+
+      - name: Stage vendor layout
+        run: node ./scripts/stage-local-vendor-binary.mjs
+
+      - name: Verify vendor layout
+        run: node ./scripts/verify-vendor-layout.mjs
+
+      - name: Run launcher platform contract tests
+        run: node --test test/launcher-platform.test.js
+
+      - name: Smoke test packaged launcher
+        run: |
+          node ./bin/legolas.js --version
+          node ./bin/legolas.js help
 
   rust-workspace:
     name: Rust Workspace
@@ -77,8 +96,34 @@ jobs:
         with:
           node-version: "18.17.0"
 
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+
+      - name: Build Rust release binary
+        run: cargo build --release -p legolas-cli
+
+      - name: Stage vendor layout
+        run: node ./scripts/stage-local-vendor-binary.mjs
+
+      - name: Verify vendor layout
+        run: node ./scripts/verify-vendor-layout.mjs
+
+      - name: Run Rust workspace tests
+        run: npm test
+
+      - name: Run launcher platform contract tests
+        run: node --test test/launcher-platform.test.js
+
       - name: Smoke test CLI
         run: npm run smoke
+
+      - name: Smoke test packaged launcher
+        run: |
+          node ./bin/legolas.js --version
+          node ./bin/legolas.js help
+          node ./bin/legolas.js scan tests/fixtures/parity/basic-app
 
       - name: Verify package tarball
         run: npm run pack:check
@@ -96,6 +141,20 @@ jobs:
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: "18.17.0"
+
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+
+      - name: Build Rust release binary
+        run: cargo build --release -p legolas-cli
+
+      - name: Stage vendor layout
+        run: node ./scripts/stage-local-vendor-binary.mjs
+
+      - name: Verify vendor layout
+        run: node ./scripts/verify-vendor-layout.mjs
 
       - name: Verify package tarball
         run: npm run pack:check
