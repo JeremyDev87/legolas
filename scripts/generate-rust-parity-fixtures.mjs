@@ -4,18 +4,24 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { analyzeProject } from "../src/core/analyze-project.js";
 import { normalizeAnalysisForOracle, normalizeCliOutput } from "./parity-oracle-normalization.js";
 
 const execFile = promisify(execFileCallback);
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const cliPath = path.join(projectRoot, "bin", "legolas.js");
 const parityFixtureRoot = path.join(projectRoot, "tests", "fixtures", "parity", "basic-app");
 const oracleRoot = path.join(projectRoot, "tests", "oracles");
 const projectRootPlaceholder = "<PROJECT_ROOT>";
 const generatedAtPlaceholder = "<GENERATED_AT>";
+const rustCliPath = path.join(
+  projectRoot,
+  "target",
+  "debug",
+  process.platform === "win32" ? "legolas-cli.exe" : "legolas-cli"
+);
 
 async function main() {
+  await buildRustCli();
+
   await fs.mkdir(path.join(oracleRoot, "basic-app"), { recursive: true });
   await fs.mkdir(path.join(oracleRoot, "cli"), { recursive: true });
   await fs.mkdir(path.join(oracleRoot, "errors"), { recursive: true });
@@ -28,7 +34,7 @@ async function main() {
   await writeOracle("errors/visualize-limit.txt", await runCliError(["visualize", parityFixtureRoot, "--limit", "nope"]));
   await writeOracle("errors/optimize-top.txt", await runCliError(["optimize", parityFixtureRoot, "--top", "NaN"]));
 
-  const analysis = await analyzeProject(parityFixtureRoot);
+  const analysis = JSON.parse(await runCli(["scan", parityFixtureRoot, "--json"]));
   const normalizedAnalysis = normalizeAnalysisForOracle(analysis, {
     projectRootPlaceholder,
     generatedAtPlaceholder
@@ -40,9 +46,7 @@ async function main() {
 }
 
 async function runCli(args) {
-  const { stdout, stderr } = await execFile(process.execPath, [cliPath, ...args], {
-    cwd: projectRoot
-  });
+  const { stdout, stderr } = await execFile(rustCliPath, args, { cwd: projectRoot });
 
   if (stderr) {
     throw new Error(`Expected stdout-only command for ${args.join(" ")}, received stderr: ${stderr}`);
@@ -53,9 +57,7 @@ async function runCli(args) {
 
 async function runCliError(args) {
   try {
-    await execFile(process.execPath, [cliPath, ...args], {
-      cwd: projectRoot
-    });
+    await execFile(rustCliPath, args, { cwd: projectRoot });
   } catch (error) {
     if (
       error &&
@@ -76,6 +78,12 @@ async function runCliError(args) {
   }
 
   throw new Error(`Expected command to fail: ${args.join(" ")}`);
+}
+
+async function buildRustCli() {
+  await execFile("cargo", ["build", "-q", "-p", "legolas-cli"], {
+    cwd: projectRoot
+  });
 }
 
 async function writeOracle(relativePath, contents) {
