@@ -11,7 +11,7 @@ use crate::{
     aliases::{AliasConfig, AliasTarget},
     error::Result,
     models::TreeShakingWarning,
-    FindingEvidence, FindingMetadata, LegolasError,
+    FindingAnalysisSource, FindingEvidence, FindingMetadata, LegolasError,
 };
 
 const IGNORED_DIRECTORIES: &[&str] = &[
@@ -192,6 +192,8 @@ pub fn scan_imports_with_aliases<P: AsRef<Path>>(
 
         for mut hint in scanned.tree_shaking_hints {
             hint.files = vec![relative_path.clone()];
+            hint.finding =
+                build_tree_shaking_finding(&hint.key, &hint.package_name, &relative_path);
             tree_shaking_observations.push(hint);
         }
     }
@@ -709,6 +711,34 @@ fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingW
     }
 
     None
+}
+
+fn build_tree_shaking_finding(
+    warning_key: &str,
+    package_name: &str,
+    relative_path: &str,
+) -> FindingMetadata {
+    let mut evidence = FindingEvidence::new("source-file")
+        .with_file(relative_path.to_string())
+        .with_specifier(package_name.to_string());
+
+    if let Some(detail) = tree_shaking_evidence_detail(warning_key) {
+        evidence = evidence.with_detail(detail);
+    }
+
+    FindingMetadata::new(
+        format!("tree-shaking:{warning_key}"),
+        FindingAnalysisSource::SourceImport,
+    )
+    .with_evidence([evidence])
+}
+
+fn tree_shaking_evidence_detail(warning_key: &str) -> Option<&'static str> {
+    match warning_key {
+        "namespace-ui-import" => Some("namespace import"),
+        "lodash-root-import" | "react-icons-root-import" => Some("root package import"),
+        _ => None,
+    }
 }
 
 fn is_type_only_clause(clause: &str) -> bool {

@@ -38,6 +38,7 @@ pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
         .map(|mut item| {
             item.imported_by = item.imported_by.into_iter().map(to_posix).collect();
             item.dynamic_imported_by = item.dynamic_imported_by.into_iter().map(to_posix).collect();
+            normalize_finding_files(&mut item.finding);
             item
         })
         .collect();
@@ -46,6 +47,7 @@ pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
         .into_iter()
         .map(|mut item| {
             item.files = item.files.into_iter().map(to_posix).collect();
+            normalize_finding_files(&mut item.finding);
             item
         })
         .collect();
@@ -54,6 +56,7 @@ pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
         .into_iter()
         .map(|mut item| {
             item.files = item.files.into_iter().map(to_posix).collect();
+            normalize_finding_files(&mut item.finding);
             item
         })
         .collect();
@@ -69,4 +72,12 @@ pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
 #[allow(dead_code)]
 fn to_posix(value: String) -> String {
     value.replace('\\', "/")
+}
+
+fn normalize_finding_files(finding: &mut legolas_core::FindingMetadata) {
+    for evidence in &mut finding.evidence {
+        if let Some(file) = evidence.file.take() {
+            evidence.file = Some(to_posix(file));
+        }
+    }
 }
