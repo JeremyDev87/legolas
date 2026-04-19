@@ -12,6 +12,14 @@ pub enum LegolasError {
     CliUsage(String),
     #[error("unsupported lockfile: {0}")]
     UnsupportedLockfile(String),
+    #[error("malformed config {path}: {message}")]
+    MalformedConfig { path: String, message: String },
+    #[error("unsupported config shape in {path} at {key_path}: {message}")]
+    UnsupportedConfigShape {
+        path: String,
+        key_path: String,
+        message: String,
+    },
     #[error("not implemented: {0}")]
     NotImplemented(&'static str),
     #[error(transparent)]

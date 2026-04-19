@@ -1,0 +1,12 @@
+{
+  "visualize": {
+    "limit": 10
+  },
+  "budget": {
+    "rules": {
+      "potentialKbSaved": {
+        "warnAt": 40,
+        "failAt": 80
+      }
+    }
+  }

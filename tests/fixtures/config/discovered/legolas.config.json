@@ -1,0 +1,27 @@
+{
+  "scan": {
+    "path": "src"
+  },
+  "visualize": {
+    "limit": 12
+  },
+  "optimize": {
+    "top": 7
+  },
+  "budget": {
+    "rules": {
+      "potentialKbSaved": {
+        "warnAt": 40,
+        "failAt": 80
+      },
+      "duplicatePackageCount": {
+        "warnAt": 2,
+        "failAt": 4
+      },
+      "dynamicImportCount": {
+        "warnAt": 1,
+        "failAt": 0
+      }
+    }
+  }
+}
