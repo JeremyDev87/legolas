@@ -9,6 +9,7 @@ use regex::Regex;
 
 use crate::{
     aliases::{AliasConfig, AliasTarget},
+    confidence::score_tree_shaking_warning,
     error::Result,
     models::TreeShakingWarning,
     FindingAnalysisSource, FindingEvidence, FindingMetadata, LegolasError,
@@ -517,6 +518,16 @@ fn merge_finding_metadata(existing: &mut FindingMetadata, mut incoming: FindingM
         existing.analysis_source = incoming.analysis_source.take();
     }
 
+    match (existing.confidence, incoming.confidence.take()) {
+        (Some(current), Some(next)) if next > current => {
+            existing.confidence = Some(next);
+        }
+        (None, Some(next)) => {
+            existing.confidence = Some(next);
+        }
+        _ => {}
+    }
+
     existing.evidence.append(&mut incoming.evidence);
     normalize_finding_evidence(&mut existing.evidence);
 }
@@ -730,6 +741,7 @@ fn build_tree_shaking_finding(
         format!("tree-shaking:{warning_key}"),
         FindingAnalysisSource::SourceImport,
     )
+    .with_confidence(score_tree_shaking_warning())
     .with_evidence([evidence])
 }
 
@@ -1237,7 +1249,10 @@ fn to_posix_relative(project_root: &Path, file_path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::merge_tree_shaking_warnings;
-    use crate::{FindingAnalysisSource, FindingEvidence, FindingMetadata, TreeShakingWarning};
+    use crate::{
+        FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata,
+        TreeShakingWarning,
+    };
 
     #[test]
     fn merge_tree_shaking_warnings_preserves_and_dedupes_finding_metadata() {
@@ -1253,6 +1268,7 @@ mod tests {
                     "tree-shaking:lodash-root-import",
                     FindingAnalysisSource::SourceImport,
                 )
+                .with_confidence(FindingConfidence::Medium)
                 .with_evidence([FindingEvidence::new("source-file")
                     .with_file("src/App.tsx")
                     .with_specifier("lodash")]),
@@ -1268,6 +1284,7 @@ mod tests {
                     "tree-shaking:lodash-root-import",
                     FindingAnalysisSource::SourceImport,
                 )
+                .with_confidence(FindingConfidence::High)
                 .with_evidence([
                     FindingEvidence::new("source-file")
                         .with_file("src/Dashboard.tsx")
@@ -1293,6 +1310,7 @@ mod tests {
                 "tree-shaking:lodash-root-import",
                 FindingAnalysisSource::SourceImport,
             )
+            .with_confidence(FindingConfidence::High)
             .with_evidence([
                 FindingEvidence::new("source-file")
                     .with_file("src/App.tsx")

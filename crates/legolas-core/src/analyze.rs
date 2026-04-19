@@ -10,6 +10,7 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::{
+    confidence::{score_duplicate_package, score_heavy_dependency, score_lazy_load_candidate},
     error::Result,
     findings::{FindingAnalysisSource, FindingEvidence, FindingMetadata},
     impact::estimate_impact,
@@ -54,7 +55,8 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
         &source_files,
         alias_config.as_ref().map(|loaded| &loaded.config),
     )?;
-    let duplicate_analysis = parse_duplicate_packages(&project_root, &package_manager)?;
+    let mut duplicate_analysis = parse_duplicate_packages(&project_root, &package_manager)?;
+    enrich_duplicate_package_findings(&mut duplicate_analysis.duplicates);
     let heavy_dependencies = build_heavy_dependency_report(&manifest, &source_analysis);
     let lazy_load_candidates = build_lazy_load_candidates(&source_analysis, &heavy_dependencies);
     let tree_shaking_warnings = build_tree_shaking_warnings(&source_analysis);
@@ -230,6 +232,16 @@ fn build_tree_shaking_warnings(source_analysis: &SourceAnalysis) -> Vec<TreeShak
     warnings
 }
 
+fn enrich_duplicate_package_findings(duplicates: &mut [crate::models::DuplicatePackage]) {
+    for duplicate in duplicates {
+        duplicate.finding = FindingMetadata::new(
+            format!("duplicate-package:{}", duplicate.name),
+            FindingAnalysisSource::LockfileTrace,
+        )
+        .with_confidence(score_duplicate_package());
+    }
+}
+
 fn build_heavy_dependency_finding(
     package_name: &str,
     rationale: &str,
@@ -269,6 +281,7 @@ fn build_heavy_dependency_finding(
     }
 
     FindingMetadata::new(format!("heavy-dependency:{package_name}"), analysis_source)
+        .with_confidence(score_heavy_dependency(import_info))
         .with_evidence(evidence)
 }
 
@@ -287,6 +300,7 @@ fn build_lazy_load_finding(package_name: &str, files: &[String]) -> FindingMetad
         format!("lazy-load:{package_name}"),
         FindingAnalysisSource::Heuristic,
     )
+    .with_confidence(score_lazy_load_candidate())
     .with_evidence(evidence)
 }
 

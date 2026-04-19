@@ -31,6 +31,7 @@
       "importCount": 1,
       "findingId": "heavy-dependency:chart.js",
       "analysisSource": "source-import",
+      "confidence": "high",
       "evidence": [
         {
           "kind": "source-file",
@@ -54,6 +55,7 @@
       "importCount": 1,
       "findingId": "heavy-dependency:react-icons",
       "analysisSource": "source-import",
+      "confidence": "high",
       "evidence": [
         {
           "kind": "source-file",
@@ -77,6 +79,7 @@
       "importCount": 1,
       "findingId": "heavy-dependency:lodash",
       "analysisSource": "source-import",
+      "confidence": "high",
       "evidence": [
         {
           "kind": "source-file",
@@ -95,7 +98,10 @@
         "4.17.21"
       ],
       "count": 2,
-      "estimatedExtraKb": 18
+      "estimatedExtraKb": 18,
+      "findingId": "duplicate-package:lodash",
+      "analysisSource": "lockfile-trace",
+      "confidence": "high"
     }
   ],
   "lazyLoadCandidates": [
@@ -109,6 +115,7 @@
       "reason": "chart.js is statically imported in UI surfaces that usually tolerate lazy loading",
       "findingId": "lazy-load:chart.js",
       "analysisSource": "heuristic",
+      "confidence": "medium",
       "evidence": [
         {
           "kind": "source-file",
@@ -128,6 +135,7 @@
       "reason": "react-icons is statically imported in UI surfaces that usually tolerate lazy loading",
       "findingId": "lazy-load:react-icons",
       "analysisSource": "heuristic",
+      "confidence": "medium",
       "evidence": [
         {
           "kind": "source-file",
@@ -147,6 +155,7 @@
       "reason": "lodash is statically imported in UI surfaces that usually tolerate lazy loading",
       "findingId": "lazy-load:lodash",
       "analysisSource": "heuristic",
+      "confidence": "medium",
       "evidence": [
         {
           "kind": "source-file",
@@ -169,6 +178,7 @@
       ],
       "findingId": "tree-shaking:lodash-root-import",
       "analysisSource": "source-import",
+      "confidence": "high",
       "evidence": [
         {
           "kind": "source-file",
@@ -189,6 +199,7 @@
       ],
       "findingId": "tree-shaking:react-icons-root-import",
       "analysisSource": "source-import",
+      "confidence": "high",
       "evidence": [
         {
           "kind": "source-file",
