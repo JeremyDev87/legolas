@@ -9,6 +9,12 @@ use crate::{error::Result, workspace::find_discovered_config_path, LegolasError}
 
 const UNKNOWN_KEY_WARNING: &str = "unknown config key ignored";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThresholdDirection {
+    Max,
+    Min,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LegolasConfig {
     pub command_defaults: CommandDefaults,
@@ -30,6 +36,42 @@ pub struct BudgetRules {
 }
 
 impl BudgetRules {
+    pub fn starter_defaults() -> Self {
+        Self {
+            potential_kb_saved: Some(BudgetThresholds {
+                warn_at: 40,
+                fail_at: 80,
+            }),
+            duplicate_package_count: Some(BudgetThresholds {
+                warn_at: 2,
+                fail_at: 4,
+            }),
+            dynamic_import_count: Some(BudgetThresholds {
+                warn_at: 1,
+                fail_at: 0,
+            }),
+        }
+    }
+
+    pub fn merged_with_starter_defaults(&self) -> Self {
+        let defaults = Self::starter_defaults();
+
+        Self {
+            potential_kb_saved: self
+                .potential_kb_saved
+                .clone()
+                .or(defaults.potential_kb_saved),
+            duplicate_package_count: self
+                .duplicate_package_count
+                .clone()
+                .or(defaults.duplicate_package_count),
+            dynamic_import_count: self
+                .dynamic_import_count
+                .clone()
+                .or(defaults.dynamic_import_count),
+        }
+    }
+
     fn is_empty(&self) -> bool {
         self.potential_kb_saved.is_none()
             && self.duplicate_package_count.is_none()
@@ -215,18 +257,21 @@ fn parse_budget(
             config_path,
             warnings,
             "budget.rules.potentialKbSaved",
+            ThresholdDirection::Max,
         )?,
         duplicate_package_count: parse_threshold_rule(
             rules_map.get("duplicatePackageCount"),
             config_path,
             warnings,
             "budget.rules.duplicatePackageCount",
+            ThresholdDirection::Max,
         )?,
         dynamic_import_count: parse_threshold_rule(
             rules_map.get("dynamicImportCount"),
             config_path,
             warnings,
             "budget.rules.dynamicImportCount",
+            ThresholdDirection::Min,
         )?,
     };
 
@@ -242,6 +287,7 @@ fn parse_threshold_rule(
     config_path: &Path,
     warnings: &mut Vec<ConfigWarning>,
     key_path: &str,
+    direction: ThresholdDirection,
 ) -> Result<Option<BudgetThresholds>> {
     let Some(value) = value else {
         return Ok(None);
@@ -257,10 +303,12 @@ fn parse_threshold_rule(
         .get("failAt")
         .ok_or_else(|| unsupported_shape(config_path, &format!("{key_path}.failAt"), "integer"))?;
 
-    Ok(Some(BudgetThresholds {
-        warn_at: expect_usize(warn_at, config_path, &format!("{key_path}.warnAt"))?,
-        fail_at: expect_usize(fail_at, config_path, &format!("{key_path}.failAt"))?,
-    }))
+    let warn_at = expect_usize(warn_at, config_path, &format!("{key_path}.warnAt"))?;
+    let fail_at = expect_usize(fail_at, config_path, &format!("{key_path}.failAt"))?;
+
+    validate_threshold_ordering(config_path, key_path, direction, warn_at, fail_at)?;
+
+    Ok(Some(BudgetThresholds { warn_at, fail_at }))
 }
 
 fn expect_object<'a>(
@@ -294,6 +342,28 @@ fn expect_usize(value: &Value, config_path: &Path, key_path: &str) -> Result<usi
         .ok_or_else(|| unsupported_shape(config_path, key_path, "integer"))?;
 
     usize::try_from(raw).map_err(|_| unsupported_shape(config_path, key_path, "integer"))
+}
+
+fn validate_threshold_ordering(
+    config_path: &Path,
+    key_path: &str,
+    direction: ThresholdDirection,
+    warn_at: usize,
+    fail_at: usize,
+) -> Result<()> {
+    match direction {
+        ThresholdDirection::Max if warn_at > fail_at => Err(unsupported_shape(
+            config_path,
+            key_path,
+            "warnAt must be less than or equal to failAt for max rule",
+        )),
+        ThresholdDirection::Min if warn_at < fail_at => Err(unsupported_shape(
+            config_path,
+            key_path,
+            "warnAt must be greater than or equal to failAt for min rule",
+        )),
+        _ => Ok(()),
+    }
 }
 
 fn warn_unknown_keys(
