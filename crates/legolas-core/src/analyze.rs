@@ -136,6 +136,7 @@ fn build_heavy_dependency_report(
                 .map(|item| item.dynamic_files.clone())
                 .unwrap_or_default(),
             import_count: import_info.map(|item| item.files.len()).unwrap_or(0),
+            finding: Default::default(),
         });
     }
 
@@ -206,6 +207,7 @@ fn build_lazy_load_candidates(
                 "{} is statically imported in UI surfaces that usually tolerate lazy loading",
                 imported_package.name
             ),
+            finding: Default::default(),
         });
     }
 

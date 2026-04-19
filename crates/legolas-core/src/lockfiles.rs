@@ -361,6 +361,7 @@ fn summarize_duplicates(versions_by_name: VersionsByName) -> Vec<DuplicatePackag
             count: versions.len(),
             versions,
             estimated_extra_kb,
+            finding: Default::default(),
         });
     }
 

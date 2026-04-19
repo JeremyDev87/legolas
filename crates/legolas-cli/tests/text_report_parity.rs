@@ -109,6 +109,7 @@ fn optimize_and_visualize_reports_clamp_zero_limits_and_cover_lazy_load_fallback
         files: Vec::new(),
         reason: "chart.js is statically imported in UI surfaces that usually tolerate lazy loading"
             .to_string(),
+        ..LazyLoadCandidate::default()
     }];
 
     assert_eq!(

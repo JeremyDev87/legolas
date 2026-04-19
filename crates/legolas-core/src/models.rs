@@ -1,3 +1,4 @@
+use crate::findings::FindingMetadata;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -47,6 +48,8 @@ pub struct HeavyDependency {
     pub imported_by: Vec<String>,
     pub dynamic_imported_by: Vec<String>,
     pub import_count: usize,
+    #[serde(flatten, default, skip_serializing_if = "FindingMetadata::is_empty")]
+    pub finding: FindingMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -56,6 +59,8 @@ pub struct DuplicatePackage {
     pub versions: Vec<String>,
     pub count: usize,
     pub estimated_extra_kb: usize,
+    #[serde(flatten, default, skip_serializing_if = "FindingMetadata::is_empty")]
+    pub finding: FindingMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -66,6 +71,8 @@ pub struct LazyLoadCandidate {
     pub recommendation: String,
     pub files: Vec<String>,
     pub reason: String,
+    #[serde(flatten, default, skip_serializing_if = "FindingMetadata::is_empty")]
+    pub finding: FindingMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -77,6 +84,8 @@ pub struct TreeShakingWarning {
     pub recommendation: String,
     pub estimated_kb: usize,
     pub files: Vec<String>,
+    #[serde(flatten, default, skip_serializing_if = "FindingMetadata::is_empty")]
+    pub finding: FindingMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

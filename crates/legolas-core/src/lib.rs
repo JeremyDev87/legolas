@@ -1,7 +1,10 @@
+pub mod aliases;
 pub mod analyze;
+pub mod artifacts;
 pub mod budget;
 pub mod config;
 pub mod error;
+pub mod findings;
 pub mod impact;
 pub mod import_scanner;
 pub mod lockfiles;
@@ -12,4 +15,5 @@ pub mod workspace;
 
 pub use analyze::analyze_project;
 pub use error::{LegolasError, Result};
+pub use findings::*;
 pub use models::*;

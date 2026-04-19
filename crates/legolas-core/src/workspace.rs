@@ -6,6 +6,9 @@ use std::{
 
 use serde::de::DeserializeOwned;
 
+pub use crate::aliases::{
+    load_alias_config, AliasConfig, AliasRule, AliasTarget, LoadedAliasConfig,
+};
 use crate::{error::Result, LegolasError};
 
 const ROOT_MARKERS: [&str; 6] = [
@@ -106,18 +109,46 @@ fn resolve_absolute(input_path: &Path) -> Result<PathBuf> {
     Ok(normalize_path(&absolute))
 }
 
-fn normalize_path(path: &Path) -> PathBuf {
+pub(crate) fn normalize_path(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
 
     for component in path.components() {
         match component {
             Component::CurDir => {}
             Component::ParentDir => {
-                normalized.pop();
+                let can_pop = matches!(
+                    normalized.components().next_back(),
+                    Some(Component::Normal(_))
+                );
+
+                if can_pop {
+                    normalized.pop();
+                } else if !path.is_absolute() {
+                    normalized.push(component.as_os_str());
+                }
             }
             other => normalized.push(other.as_os_str()),
         }
     }
 
     normalized
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::normalize_path;
+
+    #[test]
+    fn normalize_path_preserves_leading_parent_components_for_relative_paths() {
+        assert_eq!(
+            normalize_path(Path::new("../shared/../src/module.ts")),
+            Path::new("../src/module.ts")
+        );
+        assert_eq!(
+            normalize_path(Path::new("../../src/./lib.ts")),
+            Path::new("../../src/lib.ts")
+        );
+    }
 }
