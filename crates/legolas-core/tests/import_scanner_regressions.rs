@@ -19,7 +19,7 @@ fn scan_imports_ignores_import_like_text_in_comments() {
 }
 
 #[test]
-fn scan_imports_ignores_import_like_text_in_template_strings() {
+fn scan_imports_ignores_import_like_text_in_raw_template_strings() {
     let root = support::fixture_path("tests/fixtures/scanner/templates");
     let files = collect_source_files(&root).expect("collect template regression files");
 
