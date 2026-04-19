@@ -209,6 +209,94 @@ fn analyze_project_surfaces_malformed_alias_configs_instead_of_falling_back() {
     }
 }
 
+#[test]
+fn analyze_project_keeps_node_modules_package_remaps_as_used_dependencies() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "package-remap-analysis-app",
+  "dependencies": {
+    "react": "^18.2.0"
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "tsconfig.json",
+        r#"{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "react": ["node_modules/preact/compat"]
+    }
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "src/App.tsx",
+        "import { h } from \"react\";\nexport const App = h;\n",
+    );
+    write_file(
+        root,
+        "node_modules/preact/compat/index.js",
+        "export const h = () => null;\n",
+    );
+
+    let analysis = analyze_project(root).expect("analyze package-remap project");
+
+    assert_eq!(analysis.source_summary.imported_packages, 1);
+    assert_eq!(analysis.source_summary.dynamic_imports, 0);
+    assert!(analysis.unused_dependency_candidates.is_empty());
+}
+
+#[test]
+fn analyze_project_counts_dynamic_alias_entries_even_without_package_usage() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "dynamic-alias-analysis-app",
+  "private": true
+}"#,
+    );
+    write_file(
+        root,
+        "tsconfig.json",
+        r#"{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "routes/*": ["src/routes/*"]
+    }
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "src/App.tsx",
+        "export async function load() {\n  await import(\"routes/dashboard\");\n  await import(\"./local\");\n}\n",
+    );
+    write_file(
+        root,
+        "src/routes/dashboard.tsx",
+        "export default 'dashboard';\n",
+    );
+    write_file(root, "src/local.ts", "export default 'local';\n");
+
+    let analysis = analyze_project(root).expect("analyze dynamic-alias project");
+
+    assert_eq!(analysis.source_summary.imported_packages, 0);
+    assert_eq!(analysis.source_summary.dynamic_imports, 2);
+}
+
 fn write_file(root: &Path, relative_path: &str, contents: &str) {
     let path = root.join(relative_path);
     let parent = path.parent().expect("fixture file parent");
