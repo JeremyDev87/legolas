@@ -90,6 +90,13 @@ struct ParsedStringLiteral {
     next_index: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedTemplateString {
+    imports: Vec<ImportEntry>,
+    tree_shaking_hints: Vec<TreeShakingWarning>,
+    next_index: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct PackageAccumulator {
     name: String,
@@ -280,7 +287,10 @@ fn scan_source_file(contents: &str, jsx_text_guard: bool) -> ScannedSourceFile {
         }
 
         if character == '`' {
-            index = skip_template_string(contents, index);
+            let parsed_template = scan_template_string(contents, index, jsx_text_guard);
+            imports.extend(parsed_template.imports);
+            tree_shaking_hints.extend(parsed_template.tree_shaking_hints);
+            index = parsed_template.next_index;
             continue;
         }
 
@@ -335,6 +345,67 @@ fn scan_source_file(contents: &str, jsx_text_guard: bool) -> ScannedSourceFile {
     ScannedSourceFile {
         imports,
         tree_shaking_hints,
+    }
+}
+
+fn scan_template_string(
+    contents: &str,
+    start_index: usize,
+    jsx_text_guard: bool,
+) -> ParsedTemplateString {
+    let mut imports = Vec::new();
+    let mut tree_shaking_hints = Vec::new();
+    let mut index = start_index + 1;
+
+    while index < contents.len() {
+        let Some(character) = current_char(contents, index) else {
+            break;
+        };
+
+        if character == '\\' {
+            let next_index = advance_one(contents, index);
+            if next_index >= contents.len() {
+                return ParsedTemplateString {
+                    imports,
+                    tree_shaking_hints,
+                    next_index: contents.len(),
+                };
+            }
+            index = advance_one(contents, next_index);
+            continue;
+        }
+
+        if character == '`' {
+            return ParsedTemplateString {
+                imports,
+                tree_shaking_hints,
+                next_index: index + 1,
+            };
+        }
+
+        if character == '$' && peek_char(contents, index + 1) == Some('{') {
+            let expression_start = index + 2;
+            let expression_end = skip_balanced_expression(contents, expression_start);
+            let closing_index = expression_end.saturating_sub(1);
+
+            if closing_index >= expression_start {
+                let nested =
+                    scan_source_file(&contents[expression_start..closing_index], jsx_text_guard);
+                imports.extend(nested.imports);
+                tree_shaking_hints.extend(nested.tree_shaking_hints);
+            }
+
+            index = expression_end;
+            continue;
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    ParsedTemplateString {
+        imports,
+        tree_shaking_hints,
+        next_index: contents.len(),
     }
 }
 
@@ -1044,6 +1115,11 @@ fn skip_balanced_expression(contents: &str, start_index: usize) -> usize {
             continue;
         }
 
+        if character == '/' && is_regex_literal_start(contents, index) {
+            index = skip_regex_literal(contents, index);
+            continue;
+        }
+
         if character == '`' {
             index = skip_template_string(contents, index);
             continue;
@@ -1059,6 +1135,119 @@ fn skip_balanced_expression(contents: &str, start_index: usize) -> usize {
             stack.pop();
             index = advance_one(contents, index);
             continue;
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    index
+}
+
+fn is_regex_literal_start(contents: &str, start_index: usize) -> bool {
+    if peek_char(contents, start_index + 1).is_none()
+        || matches!(peek_char(contents, start_index + 1), Some('/' | '*' | '='))
+    {
+        return false;
+    }
+
+    let Some(previous_index) = find_previous_non_whitespace(contents, start_index) else {
+        return true;
+    };
+    let Some(previous_character) = current_char(contents, previous_index) else {
+        return true;
+    };
+
+    if matches!(
+        previous_character,
+        '(' | '{'
+            | '['
+            | ','
+            | ';'
+            | ':'
+            | '?'
+            | '!'
+            | '~'
+            | '^'
+            | '&'
+            | '|'
+            | '='
+            | '+'
+            | '-'
+            | '*'
+            | '%'
+            | '<'
+            | '>'
+    ) {
+        return true;
+    }
+
+    if is_identifier_character(previous_character) {
+        return previous_identifier_token(contents, previous_index).is_some_and(|token| {
+            matches!(
+                token,
+                "await"
+                    | "case"
+                    | "delete"
+                    | "in"
+                    | "instanceof"
+                    | "new"
+                    | "return"
+                    | "throw"
+                    | "typeof"
+                    | "void"
+                    | "yield"
+            )
+        });
+    }
+
+    if matches!(previous_character, ')' | ']' | '}' | '\'' | '"' | '`' | '.') {
+        return false;
+    }
+
+    false
+}
+
+fn skip_regex_literal(contents: &str, start_index: usize) -> usize {
+    let mut index = advance_one(contents, start_index);
+    let mut in_character_class = false;
+
+    while index < contents.len() {
+        let Some(character) = current_char(contents, index) else {
+            break;
+        };
+
+        if character == '\\' {
+            let next_index = advance_one(contents, index);
+            if next_index >= contents.len() {
+                return contents.len();
+            }
+            index = advance_one(contents, next_index);
+            continue;
+        }
+
+        if character == '[' {
+            in_character_class = true;
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        if character == ']' && in_character_class {
+            in_character_class = false;
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        if character == '/' && !in_character_class {
+            index = advance_one(contents, index);
+            while matches!(current_char(contents, index), Some(flag) if is_identifier_character(flag))
+            {
+                index = advance_one(contents, index);
+            }
+            return index;
+        }
+
+        if character == '\n' || character == '\r' {
+            return index;
         }
 
         index = advance_one(contents, index);
@@ -1177,6 +1366,23 @@ fn read_identifier(contents: &str, start_index: usize) -> &str {
         index = advance_one(contents, index);
     }
     &contents[start_index..index]
+}
+
+fn previous_identifier_token(contents: &str, end_index: usize) -> Option<&str> {
+    let current = current_char(contents, end_index)?;
+    if !is_identifier_character(current) {
+        return None;
+    }
+
+    let mut start = end_index;
+    while let Some((index, character)) = contents[..start].char_indices().next_back() {
+        if !is_identifier_character(character) {
+            break;
+        }
+        start = index;
+    }
+
+    Some(&contents[start..advance_one(contents, end_index)])
 }
 
 fn is_identifier_start(character: char) -> bool {

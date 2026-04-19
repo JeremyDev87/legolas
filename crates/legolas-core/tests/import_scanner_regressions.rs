@@ -1,0 +1,306 @@
+mod support;
+
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+use legolas_core::import_scanner::{collect_source_files, scan_imports, ImportedPackageRecord};
+use tempfile::tempdir;
+
+#[test]
+fn scan_imports_ignores_import_like_text_in_comments() {
+    let root = support::fixture_path("tests/fixtures/scanner/comments");
+    let files = collect_source_files(&root).expect("collect comment regression files");
+
+    assert_eq!(to_posix_paths(&root, &files), vec!["Commented.tsx"]);
+
+    let analysis = scan_imports(&root, &files).expect("scan comment regression fixture");
+
+    assert!(analysis.by_package.is_empty());
+    assert_eq!(analysis.dynamic_import_count, 0);
+    assert!(analysis.tree_shaking_warnings.is_empty());
+}
+
+#[test]
+fn scan_imports_ignores_import_like_text_in_raw_template_strings() {
+    let root = support::fixture_path("tests/fixtures/scanner/templates");
+    let files = collect_source_files(&root).expect("collect template regression files");
+
+    assert_eq!(to_posix_paths(&root, &files), vec!["Template.tsx"]);
+
+    let analysis = scan_imports(&root, &files).expect("scan template regression fixture");
+
+    assert!(analysis.by_package.is_empty());
+    assert_eq!(analysis.dynamic_import_count, 0);
+    assert!(analysis.tree_shaking_warnings.is_empty());
+}
+
+#[test]
+fn scan_imports_counts_dynamic_imports_inside_template_interpolations() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        "export const rendered = `${true ? import(\"chart.js/auto\") : \"\"}`;\n",
+    );
+
+    let files = collect_source_files(root).expect("collect interpolation regression files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis = scan_imports(root, &files).expect("scan interpolation regression fixture");
+
+    assert_eq!(analysis.dynamic_import_count, 1);
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["chart.js"]
+    );
+    assert_eq!(
+        analysis.by_package.get("chart.js"),
+        Some(&ImportedPackageRecord {
+            name: "chart.js".to_string(),
+            files: vec!["src/App.tsx".to_string()],
+            static_files: Vec::new(),
+            dynamic_files: vec!["src/App.tsx".to_string()],
+        })
+    );
+}
+
+#[test]
+fn scan_imports_counts_dynamic_imports_inside_template_interpolations_with_regex_literals() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        "export const rendered = `${/}/.test(value) ? import(\"chart.js/auto\") : \"\"}`;\n",
+    );
+
+    let files = collect_source_files(root).expect("collect interpolation regex regression files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis = scan_imports(root, &files).expect("scan interpolation regex regression fixture");
+
+    assert_eq!(analysis.dynamic_import_count, 1);
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["chart.js"]
+    );
+    assert_eq!(
+        analysis.by_package.get("chart.js"),
+        Some(&ImportedPackageRecord {
+            name: "chart.js".to_string(),
+            files: vec!["src/App.tsx".to_string()],
+            static_files: Vec::new(),
+            dynamic_files: vec!["src/App.tsx".to_string()],
+        })
+    );
+}
+
+#[test]
+fn scan_imports_counts_dynamic_imports_inside_template_interpolations_with_returned_regex_literals()
+{
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        "export const rendered = `${(() => { return /}/.test(value) ? import(\"chart.js/auto\") : \"\"; })()}`;\n",
+    );
+
+    let files =
+        collect_source_files(root).expect("collect interpolation return regex regression files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis =
+        scan_imports(root, &files).expect("scan interpolation return regex regression fixture");
+
+    assert_eq!(analysis.dynamic_import_count, 1);
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["chart.js"]
+    );
+    assert_eq!(
+        analysis.by_package.get("chart.js"),
+        Some(&ImportedPackageRecord {
+            name: "chart.js".to_string(),
+            files: vec!["src/App.tsx".to_string()],
+            static_files: Vec::new(),
+            dynamic_files: vec!["src/App.tsx".to_string()],
+        })
+    );
+}
+
+#[test]
+fn scan_imports_tracks_export_from_reexports_without_type_only_exports() {
+    let root = support::fixture_path("tests/fixtures/scanner/reexport");
+    let files = collect_source_files(&root).expect("collect reexport regression files");
+
+    assert_eq!(to_posix_paths(&root, &files), vec!["index.ts"]);
+
+    let analysis = scan_imports(&root, &files).expect("scan reexport regression fixture");
+
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["@scope/runtime", "chart.js", "dayjs"]
+    );
+    assert_eq!(analysis.dynamic_import_count, 0);
+    assert!(analysis.tree_shaking_warnings.is_empty());
+    assert_eq!(
+        analysis.by_package.get("@scope/runtime"),
+        Some(&ImportedPackageRecord {
+            name: "@scope/runtime".to_string(),
+            files: vec!["index.ts".to_string()],
+            static_files: vec!["index.ts".to_string()],
+            dynamic_files: Vec::new(),
+        })
+    );
+    assert_eq!(
+        analysis.by_package.get("chart.js"),
+        Some(&ImportedPackageRecord {
+            name: "chart.js".to_string(),
+            files: vec!["index.ts".to_string()],
+            static_files: vec!["index.ts".to_string()],
+            dynamic_files: Vec::new(),
+        })
+    );
+    assert_eq!(
+        analysis.by_package.get("dayjs"),
+        Some(&ImportedPackageRecord {
+            name: "dayjs".to_string(),
+            files: vec!["index.ts".to_string()],
+            static_files: vec!["index.ts".to_string()],
+            dynamic_files: Vec::new(),
+        })
+    );
+}
+
+#[test]
+fn scan_imports_counts_nested_dynamic_imports() {
+    let root = support::fixture_path("tests/fixtures/scanner/nested-dynamic");
+    let files = collect_source_files(&root).expect("collect nested dynamic regression files");
+
+    assert_eq!(to_posix_paths(&root, &files), vec!["App.tsx"]);
+
+    let analysis = scan_imports(&root, &files).expect("scan nested dynamic regression fixture");
+
+    assert_eq!(analysis.dynamic_import_count, 2);
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["chart.js", "mapbox-gl"]
+    );
+    assert_eq!(
+        analysis.by_package.get("chart.js"),
+        Some(&ImportedPackageRecord {
+            name: "chart.js".to_string(),
+            files: vec!["App.tsx".to_string()],
+            static_files: Vec::new(),
+            dynamic_files: vec!["App.tsx".to_string()],
+        })
+    );
+    assert_eq!(
+        analysis.by_package.get("mapbox-gl"),
+        Some(&ImportedPackageRecord {
+            name: "mapbox-gl".to_string(),
+            files: vec!["App.tsx".to_string()],
+            static_files: Vec::new(),
+            dynamic_files: vec!["App.tsx".to_string()],
+        })
+    );
+}
+
+#[test]
+fn scan_imports_reads_both_vue_script_blocks() {
+    let root = support::fixture_path("tests/fixtures/scanner/vue-multiscript");
+    let files = collect_source_files(&root).expect("collect vue multiscript regression files");
+
+    assert_eq!(to_posix_paths(&root, &files), vec!["Widget.vue"]);
+
+    let analysis = scan_imports(&root, &files).expect("scan vue multiscript regression fixture");
+
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["@scope/runtime", "vue"]
+    );
+    assert_eq!(analysis.dynamic_import_count, 0);
+    assert_eq!(
+        analysis.by_package.get("@scope/runtime"),
+        Some(&ImportedPackageRecord {
+            name: "@scope/runtime".to_string(),
+            files: vec!["Widget.vue".to_string()],
+            static_files: vec!["Widget.vue".to_string()],
+            dynamic_files: Vec::new(),
+        })
+    );
+    assert_eq!(
+        analysis.by_package.get("vue"),
+        Some(&ImportedPackageRecord {
+            name: "vue".to_string(),
+            files: vec!["Widget.vue".to_string()],
+            static_files: vec!["Widget.vue".to_string()],
+            dynamic_files: Vec::new(),
+        })
+    );
+}
+
+#[test]
+fn scan_imports_reads_svelte_context_and_instance_scripts() {
+    let root = support::fixture_path("tests/fixtures/scanner/svelte-context");
+    let files = collect_source_files(&root).expect("collect svelte context regression files");
+
+    assert_eq!(to_posix_paths(&root, &files), vec!["Panel.svelte"]);
+
+    let analysis = scan_imports(&root, &files).expect("scan svelte context regression fixture");
+
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["@sveltejs/kit", "dayjs"]
+    );
+    assert_eq!(analysis.dynamic_import_count, 0);
+    assert_eq!(
+        analysis.by_package.get("@sveltejs/kit"),
+        Some(&ImportedPackageRecord {
+            name: "@sveltejs/kit".to_string(),
+            files: vec!["Panel.svelte".to_string()],
+            static_files: vec!["Panel.svelte".to_string()],
+            dynamic_files: Vec::new(),
+        })
+    );
+    assert_eq!(
+        analysis.by_package.get("dayjs"),
+        Some(&ImportedPackageRecord {
+            name: "dayjs".to_string(),
+            files: vec!["Panel.svelte".to_string()],
+            static_files: vec!["Panel.svelte".to_string()],
+            dynamic_files: Vec::new(),
+        })
+    );
+}
+
+fn to_posix_paths(root: &Path, files: &[PathBuf]) -> Vec<String> {
+    let mut relative_paths = files
+        .iter()
+        .map(|file| {
+            file.strip_prefix(root)
+                .expect("source file should stay under fixture root")
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect::<Vec<_>>();
+    relative_paths.sort();
+    relative_paths
+}
+
+fn write_file(root: &Path, relative_path: &str, contents: &str) {
+    let path = root.join(relative_path);
+    let parent = path.parent().expect("fixture file parent");
+    fs::create_dir_all(parent).expect("create fixture directory");
+    fs::write(path, contents).expect("write fixture file");
+}
