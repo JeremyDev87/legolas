@@ -11,8 +11,11 @@ use serde_json::Value;
 
 use crate::{
     error::Result,
+    findings::{FindingAnalysisSource, FindingEvidence, FindingMetadata},
     impact::estimate_impact,
-    import_scanner::{collect_source_files, scan_imports_with_aliases, SourceAnalysis},
+    import_scanner::{
+        collect_source_files, scan_imports_with_aliases, ImportedPackageRecord, SourceAnalysis,
+    },
     lockfiles::parse_duplicate_packages,
     models::{
         Analysis, HeavyDependency, LazyLoadCandidate, Metadata, PackageSummary, SourceSummary,
@@ -128,7 +131,7 @@ fn build_heavy_dependency_report(
 
         let import_info = source_analysis.by_package.get(&name);
         heavy_dependencies.push(HeavyDependency {
-            name,
+            name: name.clone(),
             version_range,
             estimated_kb: intel.estimated_kb,
             category: intel.category.to_string(),
@@ -141,7 +144,7 @@ fn build_heavy_dependency_report(
                 .map(|item| item.dynamic_files.clone())
                 .unwrap_or_default(),
             import_count: import_info.map(|item| item.files.len()).unwrap_or(0),
-            finding: Default::default(),
+            finding: build_heavy_dependency_finding(&name, intel.rationale, import_info),
         });
     }
 
@@ -203,6 +206,7 @@ fn build_lazy_load_candidates(
             continue;
         }
 
+        let evidence_files = split_friendly_files.clone();
         candidates.push(LazyLoadCandidate {
             name: imported_package.name.clone(),
             estimated_savings_kb: (heavy.estimated_kb as f64 * 0.75).round() as usize,
@@ -212,7 +216,7 @@ fn build_lazy_load_candidates(
                 "{} is statically imported in UI surfaces that usually tolerate lazy loading",
                 imported_package.name
             ),
-            finding: Default::default(),
+            finding: build_lazy_load_finding(&imported_package.name, &evidence_files),
         });
     }
 
@@ -224,6 +228,80 @@ fn build_tree_shaking_warnings(source_analysis: &SourceAnalysis) -> Vec<TreeShak
     let mut warnings = source_analysis.tree_shaking_warnings.clone();
     warnings.sort_by_key(|item| Reverse(item.estimated_kb));
     warnings
+}
+
+fn build_heavy_dependency_finding(
+    package_name: &str,
+    rationale: &str,
+    import_info: Option<&ImportedPackageRecord>,
+) -> FindingMetadata {
+    let analysis_source = import_info
+        .filter(|item| !item.files.is_empty())
+        .map(|_| FindingAnalysisSource::SourceImport)
+        .unwrap_or(FindingAnalysisSource::Heuristic);
+    let mut evidence = Vec::new();
+
+    if let Some(import_info) = import_info {
+        evidence.extend(
+            import_info
+                .static_files
+                .iter()
+                .map(|file| {
+                    FindingEvidence::new("source-file")
+                        .with_file(file.clone())
+                        .with_specifier(package_name.to_string())
+                        .with_detail(format!("static import; {rationale}"))
+                })
+                .collect::<Vec<_>>(),
+        );
+        evidence.extend(
+            import_info
+                .dynamic_files
+                .iter()
+                .map(|file| {
+                    FindingEvidence::new("source-file")
+                        .with_file(file.clone())
+                        .with_specifier(package_name.to_string())
+                        .with_detail(format!("dynamic import; {rationale}"))
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    FindingMetadata::new(format!("heavy-dependency:{package_name}"), analysis_source)
+        .with_evidence(evidence)
+}
+
+fn build_lazy_load_finding(package_name: &str, files: &[String]) -> FindingMetadata {
+    let evidence = files
+        .iter()
+        .map(|file| {
+            FindingEvidence::new("source-file")
+                .with_file(file.clone())
+                .with_specifier(package_name.to_string())
+                .with_detail(lazy_load_surface_detail(file))
+        })
+        .collect::<Vec<_>>();
+
+    FindingMetadata::new(
+        format!("lazy-load:{package_name}"),
+        FindingAnalysisSource::Heuristic,
+    )
+    .with_evidence(evidence)
+}
+
+fn lazy_load_surface_detail(file: &str) -> String {
+    let normalized = file.to_ascii_lowercase();
+
+    CANDIDATE_FILES_PATTERN
+        .find(&normalized)
+        .map(|matched| {
+            format!(
+                "route-like UI surface matched `{}` keyword",
+                matched.as_str()
+            )
+        })
+        .unwrap_or_else(|| "route-like UI surface heuristic".to_string())
 }
 
 fn build_unused_dependency_candidates(

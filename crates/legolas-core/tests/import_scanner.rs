@@ -15,7 +15,7 @@ use legolas_core::{
         collect_source_files, scan_imports, scan_imports_with_aliases, ImportedPackageRecord,
     },
     workspace::load_alias_config,
-    TreeShakingWarning,
+    FindingAnalysisSource, FindingEvidence, FindingMetadata, TreeShakingWarning,
 };
 use tempfile::tempdir;
 
@@ -177,7 +177,14 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
                 recommendation: "Prefer per-method imports or lodash-es.".to_string(),
                 estimated_kb: 26,
                 files: vec!["basic/Dashboard.tsx".to_string()],
-                finding: Default::default(),
+                finding: FindingMetadata::new(
+                    "tree-shaking:lodash-root-import",
+                    FindingAnalysisSource::SourceImport,
+                )
+                .with_evidence([FindingEvidence::new("source-file")
+                    .with_file("basic/Dashboard.tsx")
+                    .with_specifier("lodash")
+                    .with_detail("root package import")]),
             },
             TreeShakingWarning {
                 key: "react-icons-root-import".to_string(),
@@ -189,7 +196,20 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
                     "basic/Dashboard.tsx".to_string(),
                     "vue/Widget.vue".to_string()
                 ],
-                finding: Default::default(),
+                finding: FindingMetadata::new(
+                    "tree-shaking:react-icons-root-import",
+                    FindingAnalysisSource::SourceImport,
+                )
+                .with_evidence([
+                    FindingEvidence::new("source-file")
+                        .with_file("basic/Dashboard.tsx")
+                        .with_specifier("react-icons")
+                        .with_detail("root package import"),
+                    FindingEvidence::new("source-file")
+                        .with_file("vue/Widget.vue")
+                        .with_specifier("react-icons")
+                        .with_detail("root package import"),
+                ]),
             },
             TreeShakingWarning {
                 key: "namespace-ui-import".to_string(),
@@ -200,7 +220,14 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
                     .to_string(),
                 estimated_kb: 35,
                 files: vec!["jsx/View.jsx".to_string()],
-                finding: Default::default(),
+                finding: FindingMetadata::new(
+                    "tree-shaking:namespace-ui-import",
+                    FindingAnalysisSource::SourceImport,
+                )
+                .with_evidence([FindingEvidence::new("source-file")
+                    .with_file("jsx/View.jsx")
+                    .with_specifier("lucide-react")
+                    .with_detail("namespace import")]),
             },
         ]
     );
