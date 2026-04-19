@@ -4,19 +4,24 @@ use legolas_cli::{
     argv::{self, Command},
     reporters::text::{format_optimize_report, format_scan_report, format_visualization_report},
 };
-use legolas_core::{analyze_project, LegolasError, Result};
+use legolas_core::{
+    analyze_project,
+    config::{load_config_file, load_discovered_config, LoadedConfig},
+    LegolasError, Result,
+};
 
 const HELP_TEXT: &str = r#"Legolas
 Slim bundles with precision.
 
 Usage:
-  legolas scan [path] [--json]
-  legolas visualize [path] [--limit 10]
-  legolas optimize [path] [--top 5]
+  legolas scan [path] [--config file] [--json]
+  legolas visualize [path] [--config file] [--limit 10]
+  legolas optimize [path] [--config file] [--top 5]
   legolas help
 
 Examples:
   legolas scan .
+  legolas scan --config ./legolas.config.json
   legolas visualize ./apps/storefront --limit 12
   legolas optimize --top 7
 "#;
@@ -37,18 +42,21 @@ fn run() -> Result<()> {
     }
 
     if parsed.help || parsed.command.is_none() || matches!(parsed.command, Some(Command::Help)) {
-        println!("{HELP_TEXT}");
+        print!("{HELP_TEXT}");
         return Ok(());
     }
 
-    let command = parsed.command.expect("command already checked");
+    let command = parsed.command.clone().expect("command already checked");
     if let Command::Unknown(command) = command {
         return Err(LegolasError::CliUsage(format!(
             "unknown command \"{command}\""
         )));
     }
 
-    let analysis = analyze_project(&parsed.target_path)?;
+    let loaded_config = resolve_loaded_config(&parsed)?;
+    emit_config_warnings(loaded_config.as_ref(), parsed.json);
+    let target_path = resolve_target_path(&parsed, loaded_config.as_ref())?;
+    let analysis = analyze_project(&target_path)?;
 
     if parsed.json {
         println!("{}", serde_json::to_string_pretty(&analysis)?);
@@ -57,8 +65,14 @@ fn run() -> Result<()> {
 
     let output = match command {
         Command::Scan => format_scan_report(&analysis),
-        Command::Visualize => format_visualization_report(&analysis, parsed.limit.unwrap_or(10)),
-        Command::Optimize => format_optimize_report(&analysis, parsed.top.unwrap_or(5)),
+        Command::Visualize => format_visualization_report(
+            &analysis,
+            resolve_visualize_limit(&parsed, loaded_config.as_ref()),
+        ),
+        Command::Optimize => format_optimize_report(
+            &analysis,
+            resolve_optimize_top(&parsed, loaded_config.as_ref()),
+        ),
         Command::Help | Command::Unknown(_) => unreachable!("handled above"),
     };
 
@@ -83,4 +97,76 @@ fn workspace_root() -> PathBuf {
         .and_then(|path| path.parent())
         .expect("workspace root")
         .to_path_buf()
+}
+
+fn resolve_loaded_config(parsed: &argv::CliArgs) -> Result<Option<LoadedConfig>> {
+    if let Some(config_path) = &parsed.config_path {
+        return Ok(Some(load_config_file(config_path)?));
+    }
+
+    let discovery_input = parsed
+        .target_path
+        .clone()
+        .unwrap_or(std::env::current_dir()?);
+    load_discovered_config(discovery_input)
+}
+
+fn emit_config_warnings(config: Option<&LoadedConfig>, json_mode: bool) {
+    if json_mode {
+        return;
+    }
+
+    let Some(config) = config else {
+        return;
+    };
+
+    for warning in &config.warnings {
+        eprintln!(
+            "legolas: config warning: {}: {}",
+            config.path.display(),
+            warning
+        );
+    }
+}
+
+fn resolve_target_path(parsed: &argv::CliArgs, config: Option<&LoadedConfig>) -> Result<PathBuf> {
+    if let Some(target_path) = &parsed.target_path {
+        return Ok(target_path.clone());
+    }
+
+    if let Some(default_path) = config
+        .and_then(|item| item.config.command_defaults.scan_path.as_deref())
+        .map(|value| resolve_config_relative_path(config.expect("config exists"), value))
+    {
+        return Ok(default_path);
+    }
+
+    std::env::current_dir().map_err(Into::into)
+}
+
+fn resolve_visualize_limit(parsed: &argv::CliArgs, config: Option<&LoadedConfig>) -> usize {
+    parsed
+        .limit
+        .or_else(|| config.and_then(|item| item.config.command_defaults.visualize_limit))
+        .unwrap_or(10)
+}
+
+fn resolve_optimize_top(parsed: &argv::CliArgs, config: Option<&LoadedConfig>) -> usize {
+    parsed
+        .top
+        .or_else(|| config.and_then(|item| item.config.command_defaults.optimize_top))
+        .unwrap_or(5)
+}
+
+fn resolve_config_relative_path(config: &LoadedConfig, value: &str) -> PathBuf {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        return path;
+    }
+
+    config
+        .path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join(path)
 }

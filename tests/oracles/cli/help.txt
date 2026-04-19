@@ -2,13 +2,13 @@ Legolas
 Slim bundles with precision.
 
 Usage:
-  legolas scan [path] [--json]
-  legolas visualize [path] [--limit 10]
-  legolas optimize [path] [--top 5]
+  legolas scan [path] [--config file] [--json]
+  legolas visualize [path] [--config file] [--limit 10]
+  legolas optimize [path] [--config file] [--top 5]
   legolas help
 
 Examples:
   legolas scan .
+  legolas scan --config ./legolas.config.json
   legolas visualize ./apps/storefront --limit 12
   legolas optimize --top 7
-

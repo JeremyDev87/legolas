@@ -11,29 +11,16 @@ pub enum Command {
     Unknown(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CliArgs {
     pub command: Option<Command>,
-    pub target_path: PathBuf,
+    pub target_path: Option<PathBuf>,
+    pub config_path: Option<PathBuf>,
     pub json: bool,
     pub limit: Option<usize>,
     pub top: Option<usize>,
     pub help: bool,
     pub version: bool,
-}
-
-impl Default for CliArgs {
-    fn default() -> Self {
-        Self {
-            command: None,
-            target_path: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            json: false,
-            limit: None,
-            top: None,
-            help: false,
-            version: false,
-        }
-    }
 }
 
 pub fn parse_argv<I, S>(args: I) -> Result<CliArgs>
@@ -55,7 +42,7 @@ where
         }
 
         if !token.starts_with('-') {
-            parsed.target_path = resolve_target_path(token)?;
+            parsed.target_path = Some(resolve_path_token(token)?);
             index += 1;
             continue;
         }
@@ -69,6 +56,20 @@ where
             }
             "--json" => {
                 parsed.json = true;
+            }
+            "--config" => {
+                let next = tokens
+                    .get(index + 1)
+                    .ok_or_else(|| LegolasError::CliUsage("--config expects a path".to_string()))?;
+
+                if next.starts_with('-') {
+                    return Err(LegolasError::CliUsage(
+                        "--config expects a path".to_string(),
+                    ));
+                }
+
+                parsed.config_path = Some(resolve_path_token(next)?);
+                index += 1;
             }
             "--limit" | "--top" => {
                 let next = tokens
@@ -118,7 +119,7 @@ fn parse_command(token: &str) -> Command {
     }
 }
 
-fn resolve_target_path(token: &str) -> Result<PathBuf> {
+fn resolve_path_token(token: &str) -> Result<PathBuf> {
     let path = PathBuf::from(token);
     if path.is_absolute() {
         return Ok(path);
