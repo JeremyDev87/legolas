@@ -8,7 +8,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::{
-    error::Result, models::TreeShakingWarning, FindingEvidence, FindingMetadata, LegolasError,
+    aliases::{AliasConfig, AliasTarget},
+    error::Result,
+    models::TreeShakingWarning,
+    FindingEvidence, FindingMetadata, LegolasError,
 };
 
 const IGNORED_DIRECTORIES: &[&str] = &[
@@ -137,6 +140,14 @@ pub fn scan_imports<P: AsRef<Path>>(
     project_root: P,
     source_files: &[PathBuf],
 ) -> Result<SourceAnalysis> {
+    scan_imports_with_aliases(project_root, source_files, None)
+}
+
+pub fn scan_imports_with_aliases<P: AsRef<Path>>(
+    project_root: P,
+    source_files: &[PathBuf],
+    alias_config: Option<&AliasConfig>,
+) -> Result<SourceAnalysis> {
     let project_root = project_root.as_ref();
     ensure_directory_exists(project_root)?;
 
@@ -155,6 +166,10 @@ pub fn scan_imports<P: AsRef<Path>>(
             scan_source_file(&scannable_contents, supports_jsx_text_guard(&absolute_path));
 
         for entry in scanned.imports {
+            if is_local_alias_import(&entry.specifier, alias_config) {
+                continue;
+            }
+
             let Some(package_name) = normalize_package_name(&entry.specifier) else {
                 continue;
             };
@@ -347,6 +362,67 @@ fn normalize_package_name(specifier: &str) -> Option<String> {
             .expect("split always returns at least one segment")
             .to_string(),
     )
+}
+
+fn is_local_alias_import(specifier: &str, alias_config: Option<&AliasConfig>) -> bool {
+    let Some(alias_config) = alias_config else {
+        return false;
+    };
+
+    alias_config.rules.iter().any(|rule| {
+        match_alias_rule(rule, specifier).is_some_and(|suffix| {
+            rule.replacement_targets
+                .iter()
+                .any(|target| alias_target_exists(target, suffix))
+        })
+    })
+}
+
+fn match_alias_rule<'a>(rule: &crate::aliases::AliasRule, specifier: &'a str) -> Option<&'a str> {
+    if rule.wildcard {
+        specifier.strip_prefix(&rule.specifier_prefix)
+    } else if specifier == rule.specifier_prefix {
+        Some("")
+    } else {
+        None
+    }
+}
+
+fn alias_target_exists(target: &AliasTarget, suffix: &str) -> bool {
+    let candidate = alias_candidate_path(target, suffix);
+    path_exists(&candidate)
+        || resolve_with_source_suffixes(&candidate)
+            .into_iter()
+            .any(|candidate| path_exists(&candidate))
+}
+
+fn alias_candidate_path(target: &AliasTarget, suffix: &str) -> PathBuf {
+    if suffix.is_empty() {
+        return target.path_candidate.clone();
+    }
+
+    target.path_candidate.join(Path::new(suffix))
+}
+
+fn resolve_with_source_suffixes(candidate: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if candidate.extension().is_none() {
+        let base = candidate.to_string_lossy();
+        for suffix in SOURCE_FILE_SUFFIXES {
+            candidates.push(PathBuf::from(format!("{base}{suffix}")));
+        }
+    }
+
+    for suffix in SOURCE_FILE_SUFFIXES {
+        candidates.push(candidate.join(format!("index{suffix}")));
+    }
+
+    candidates
+}
+
+fn path_exists(path: &Path) -> bool {
+    fs::metadata(path).is_ok()
 }
 
 fn merge_tree_shaking_warnings(warnings: Vec<TreeShakingWarning>) -> Vec<TreeShakingWarning> {

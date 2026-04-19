@@ -2,6 +2,7 @@
   "compilerOptions": {
     "baseUrl": "src",
     "paths": {
+      "env": ["config/env.js"],
       "~/*": ["components/*", "fallback/*"],
       "#env": ["config/env.js"]
     }

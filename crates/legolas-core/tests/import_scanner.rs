@@ -6,7 +6,10 @@ use std::{
 };
 
 use legolas_core::{
-    import_scanner::{collect_source_files, scan_imports, ImportedPackageRecord},
+    import_scanner::{
+        collect_source_files, scan_imports, scan_imports_with_aliases, ImportedPackageRecord,
+    },
+    workspace::load_alias_config,
     TreeShakingWarning,
 };
 use tempfile::tempdir;
@@ -196,6 +199,60 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
             },
         ]
     );
+}
+
+#[test]
+fn scan_imports_excludes_tsconfig_backed_local_aliases_from_package_usage() {
+    let root = support::fixture_path("tests/fixtures/aliases/tsconfig-paths");
+    let files = collect_source_files(&root).expect("collect tsconfig fixture source files");
+    let alias_config = load_alias_config(&root)
+        .expect("load tsconfig alias config")
+        .expect("tsconfig alias config should exist");
+
+    assert_eq!(
+        to_posix_paths(&root, &files),
+        vec![
+            "src/App.tsx",
+            "src/components/Button.tsx",
+            "src/shared/fallback.ts",
+            "src/shared/index.ts",
+        ]
+    );
+
+    let legacy = scan_imports(&root, &files).expect("scan imports without alias config");
+    let alias_aware = scan_imports_with_aliases(&root, &files, Some(&alias_config.config))
+        .expect("scan imports with alias config");
+
+    assert!(legacy.by_package.contains_key("components"));
+    assert!(legacy.by_package.contains_key("chart.js"));
+    assert!(!alias_aware.by_package.contains_key("components"));
+    assert!(alias_aware.by_package.contains_key("chart.js"));
+    assert_eq!(alias_aware.imported_packages.len(), 1);
+    assert_eq!(alias_aware.dynamic_import_count, 0);
+}
+
+#[test]
+fn scan_imports_excludes_jsconfig_backed_exact_aliases_from_package_usage() {
+    let root = support::fixture_path("tests/fixtures/aliases/jsconfig-paths");
+    let files = collect_source_files(&root).expect("collect jsconfig fixture source files");
+    let alias_config = load_alias_config(&root)
+        .expect("load jsconfig alias config")
+        .expect("jsconfig alias config should exist");
+
+    assert_eq!(
+        to_posix_paths(&root, &files),
+        vec!["src/config/env.js", "src/index.jsx"]
+    );
+
+    let legacy = scan_imports(&root, &files).expect("scan imports without alias config");
+    let alias_aware = scan_imports_with_aliases(&root, &files, Some(&alias_config.config))
+        .expect("scan imports with alias config");
+
+    assert!(legacy.by_package.contains_key("env"));
+    assert!(legacy.by_package.contains_key("react-icons"));
+    assert!(!alias_aware.by_package.contains_key("env"));
+    assert!(alias_aware.by_package.contains_key("react-icons"));
+    assert_eq!(alias_aware.imported_packages.len(), 1);
 }
 
 fn write_file(root: &Path, relative_path: &str, contents: &str) {
