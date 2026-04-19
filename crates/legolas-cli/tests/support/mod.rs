@@ -46,6 +46,11 @@ pub fn normalize_budget_json_output(output: &str) -> Value {
 }
 
 #[allow(dead_code)]
+pub fn normalize_ci_json_output(output: &str) -> Value {
+    serde_json::from_str::<Value>(output).expect("parse ci json")
+}
+
+#[allow(dead_code)]
 fn normalize_analysis_value(analysis: &mut Value) {
     replace_string_field(analysis, &["projectRoot"], "<PROJECT_ROOT>");
     replace_string_field(analysis, &["metadata", "generatedAt"], "<GENERATED_AT>");

@@ -140,6 +140,7 @@ jobs:
           node ./bin/legolas.js --version
           node ./bin/legolas.js help
           node ./bin/legolas.js scan tests/fixtures/parity/basic-app
+          node ./scripts/smoke-ci-command.mjs launcher
 
       - name: Copy release asset
         shell: bash
@@ -225,6 +226,7 @@ jobs:
           node ./bin/legolas.js --version
           node ./bin/legolas.js help
           node ./bin/legolas.js scan tests/fixtures/parity/basic-app
+          node ./scripts/smoke-ci-command.mjs launcher
 
       - name: Verify package tarball
         run: npm run pack:check

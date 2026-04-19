@@ -36,7 +36,7 @@
     "scan": "cargo run -p legolas-cli -- scan",
     "visualize": "cargo run -p legolas-cli -- visualize",
     "optimize": "cargo run -p legolas-cli -- optimize",
-    "smoke": "cargo run -p legolas-cli -- --version && cargo run -p legolas-cli -- help && cargo run -p legolas-cli -- scan . && cargo run -p legolas-cli -- visualize . && cargo run -p legolas-cli -- optimize .",
+    "smoke": "cargo run -p legolas-cli -- --version && cargo run -p legolas-cli -- help && cargo run -p legolas-cli -- scan . && cargo run -p legolas-cli -- visualize . && cargo run -p legolas-cli -- optimize . && node ./scripts/smoke-ci-command.mjs cargo",
     "pack:check": "node ./scripts/check-pack.mjs",
     "test": "cargo test --workspace"
   },

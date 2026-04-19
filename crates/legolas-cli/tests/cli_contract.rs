@@ -4,7 +4,12 @@ use assert_cmd::Command;
 
 #[test]
 fn prints_version_without_a_command() {
-    for args in [vec!["--version"], vec!["-v"]] {
+    for args in [
+        vec!["--version"],
+        vec!["-v"],
+        vec!["budget", "--version", "--top", "1"],
+        vec!["ci", "--version", "--limit", "1"],
+    ] {
         let output = Command::cargo_bin("legolas-cli")
             .expect("build binary")
             .args(args)
@@ -22,7 +27,14 @@ fn prints_version_without_a_command() {
 
 #[test]
 fn prints_help_for_empty_command_and_help_variants() {
-    for args in [Vec::<&str>::new(), vec!["help"], vec!["--help"], vec!["-h"]] {
+    for args in [
+        Vec::<&str>::new(),
+        vec!["help"],
+        vec!["--help"],
+        vec!["-h"],
+        vec!["budget", "--help", "--limit", "1"],
+        vec!["ci", "--help", "--top", "1"],
+    ] {
         let output = Command::cargo_bin("legolas-cli")
             .expect("build binary")
             .args(args)
