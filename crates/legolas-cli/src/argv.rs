@@ -8,6 +8,7 @@ pub enum Command {
     Visualize,
     Optimize,
     Budget,
+    Ci,
     Help,
     Unknown(String),
 }
@@ -113,6 +114,10 @@ where
         index += 1;
     }
 
+    if parsed.help || parsed.version {
+        return Ok(parsed);
+    }
+
     parsed.limit = finalize_numeric_flag(parsed.command.as_ref(), pending_limit, "--limit")?;
     parsed.top = finalize_numeric_flag(parsed.command.as_ref(), pending_top, "--top")?;
 
@@ -125,6 +130,7 @@ fn parse_command(token: &str) -> Command {
         "visualize" => Command::Visualize,
         "optimize" => Command::Optimize,
         "budget" => Command::Budget,
+        "ci" => Command::Ci,
         "help" => Command::Help,
         other => Command::Unknown(other.to_string()),
     }
@@ -148,7 +154,7 @@ fn finalize_numeric_flag(
         return Ok(None);
     };
 
-    if matches!(command, Some(Command::Budget)) {
+    if matches!(command, Some(Command::Budget | Command::Ci)) {
         return Err(LegolasError::CliUsage(format!("unknown flag \"{token}\"")));
     }
 

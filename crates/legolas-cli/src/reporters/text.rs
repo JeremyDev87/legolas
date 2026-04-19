@@ -222,6 +222,34 @@ pub fn format_budget_report(analysis: &Analysis, evaluation: &BudgetEvaluation) 
     lines.join("\n")
 }
 
+pub fn format_ci_report(analysis: &Analysis, evaluation: &BudgetEvaluation) -> String {
+    let mut lines = Vec::new();
+
+    lines.push(format!("Legolas CI for {}", analysis.package_summary.name));
+    append_warnings(&mut lines, &analysis.warnings);
+    lines.push(String::new());
+    lines.push(format!(
+        "Gate result: {}",
+        match evaluation.overall_status {
+            legolas_core::budget::BudgetStatus::Pass => "PASS",
+            legolas_core::budget::BudgetStatus::Warn => "WARN",
+            legolas_core::budget::BudgetStatus::Fail => "FAIL",
+        }
+    ));
+    lines.push(format!("Overall status: {:?}", evaluation.overall_status));
+    lines.push(format!(
+        "Rule statuses: {}",
+        evaluation
+            .rules
+            .iter()
+            .map(|item| format!("{}={:?}", item.key, item.status))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+
+    lines.join("\n")
+}
+
 #[derive(Clone)]
 struct BarItem {
     label: String,
