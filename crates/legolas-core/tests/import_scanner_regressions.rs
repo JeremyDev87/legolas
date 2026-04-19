@@ -1,8 +1,12 @@
 mod support;
 
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use legolas_core::import_scanner::{collect_source_files, scan_imports, ImportedPackageRecord};
+use tempfile::tempdir;
 
 #[test]
 fn scan_imports_ignores_import_like_text_in_comments() {
@@ -30,6 +34,108 @@ fn scan_imports_ignores_import_like_text_in_raw_template_strings() {
     assert!(analysis.by_package.is_empty());
     assert_eq!(analysis.dynamic_import_count, 0);
     assert!(analysis.tree_shaking_warnings.is_empty());
+}
+
+#[test]
+fn scan_imports_counts_dynamic_imports_inside_template_interpolations() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        "export const rendered = `${true ? import(\"chart.js/auto\") : \"\"}`;\n",
+    );
+
+    let files = collect_source_files(root).expect("collect interpolation regression files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis = scan_imports(root, &files).expect("scan interpolation regression fixture");
+
+    assert_eq!(analysis.dynamic_import_count, 1);
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["chart.js"]
+    );
+    assert_eq!(
+        analysis.by_package.get("chart.js"),
+        Some(&ImportedPackageRecord {
+            name: "chart.js".to_string(),
+            files: vec!["src/App.tsx".to_string()],
+            static_files: Vec::new(),
+            dynamic_files: vec!["src/App.tsx".to_string()],
+        })
+    );
+}
+
+#[test]
+fn scan_imports_counts_dynamic_imports_inside_template_interpolations_with_regex_literals() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        "export const rendered = `${/}/.test(value) ? import(\"chart.js/auto\") : \"\"}`;\n",
+    );
+
+    let files = collect_source_files(root).expect("collect interpolation regex regression files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis = scan_imports(root, &files).expect("scan interpolation regex regression fixture");
+
+    assert_eq!(analysis.dynamic_import_count, 1);
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["chart.js"]
+    );
+    assert_eq!(
+        analysis.by_package.get("chart.js"),
+        Some(&ImportedPackageRecord {
+            name: "chart.js".to_string(),
+            files: vec!["src/App.tsx".to_string()],
+            static_files: Vec::new(),
+            dynamic_files: vec!["src/App.tsx".to_string()],
+        })
+    );
+}
+
+#[test]
+fn scan_imports_counts_dynamic_imports_inside_template_interpolations_with_returned_regex_literals()
+{
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        "export const rendered = `${(() => { return /}/.test(value) ? import(\"chart.js/auto\") : \"\"; })()}`;\n",
+    );
+
+    let files =
+        collect_source_files(root).expect("collect interpolation return regex regression files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis =
+        scan_imports(root, &files).expect("scan interpolation return regex regression fixture");
+
+    assert_eq!(analysis.dynamic_import_count, 1);
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["chart.js"]
+    );
+    assert_eq!(
+        analysis.by_package.get("chart.js"),
+        Some(&ImportedPackageRecord {
+            name: "chart.js".to_string(),
+            files: vec!["src/App.tsx".to_string()],
+            static_files: Vec::new(),
+            dynamic_files: vec!["src/App.tsx".to_string()],
+        })
+    );
 }
 
 #[test]
@@ -190,4 +296,11 @@ fn to_posix_paths(root: &Path, files: &[PathBuf]) -> Vec<String> {
         .collect::<Vec<_>>();
     relative_paths.sort();
     relative_paths
+}
+
+fn write_file(root: &Path, relative_path: &str, contents: &str) {
+    let path = root.join(relative_path);
+    let parent = path.parent().expect("fixture file parent");
+    fs::create_dir_all(parent).expect("create fixture directory");
+    fs::write(path, contents).expect("write fixture file");
 }
