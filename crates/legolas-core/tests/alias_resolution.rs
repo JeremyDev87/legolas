@@ -24,6 +24,16 @@ fn load_alias_config_reads_tsconfig_paths_deterministically() {
         loaded.config.rules,
         vec![
             AliasRule {
+                pattern: "components/*".to_string(),
+                specifier_prefix: "components/".to_string(),
+                replacement_targets: vec![AliasTarget {
+                    pattern: "src/components/*".to_string(),
+                    replacement_prefix: "src/components/".to_string(),
+                    path_candidate: project_root.join("src/components"),
+                }],
+                wildcard: true,
+            },
+            AliasRule {
                 pattern: "@shared".to_string(),
                 specifier_prefix: "@shared".to_string(),
                 replacement_targets: vec![
@@ -69,6 +79,16 @@ fn load_alias_config_reads_jsconfig_paths_when_tsconfig_is_absent() {
             AliasRule {
                 pattern: "#env".to_string(),
                 specifier_prefix: "#env".to_string(),
+                replacement_targets: vec![AliasTarget {
+                    pattern: "config/env.js".to_string(),
+                    replacement_prefix: "config/env.js".to_string(),
+                    path_candidate: project_root.join("src/config/env.js"),
+                }],
+                wildcard: false,
+            },
+            AliasRule {
+                pattern: "env".to_string(),
+                specifier_prefix: "env".to_string(),
                 replacement_targets: vec![AliasTarget {
                     pattern: "config/env.js".to_string(),
                     replacement_prefix: "config/env.js".to_string(),

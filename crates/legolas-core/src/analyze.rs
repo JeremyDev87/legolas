@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::{
     error::Result,
     impact::estimate_impact,
-    import_scanner::{collect_source_files, scan_imports, SourceAnalysis},
+    import_scanner::{collect_source_files, scan_imports_with_aliases, SourceAnalysis},
     lockfiles::parse_duplicate_packages,
     models::{
         Analysis, HeavyDependency, LazyLoadCandidate, Metadata, PackageSummary, SourceSummary,
@@ -20,7 +20,7 @@ use crate::{
     },
     package_intelligence::get_package_intel,
     project_shape::{detect_frameworks, detect_package_manager},
-    workspace::{find_project_root, read_json_if_exists},
+    workspace::{find_project_root, load_alias_config, read_json_if_exists},
     LegolasError,
 };
 
@@ -44,8 +44,13 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
 
     let package_manager = detect_package_manager(&project_root, &manifest)?;
     let frameworks = detect_frameworks(&project_root, &manifest)?;
+    let alias_config = load_alias_config(&project_root)?;
     let source_files = collect_source_files(&project_root)?;
-    let source_analysis = scan_imports(&project_root, &source_files)?;
+    let source_analysis = scan_imports_with_aliases(
+        &project_root,
+        &source_files,
+        alias_config.as_ref().map(|loaded| &loaded.config),
+    )?;
     let duplicate_analysis = parse_duplicate_packages(&project_root, &package_manager)?;
     let heavy_dependencies = build_heavy_dependency_report(&manifest, &source_analysis);
     let lazy_load_candidates = build_lazy_load_candidates(&source_analysis, &heavy_dependencies);
