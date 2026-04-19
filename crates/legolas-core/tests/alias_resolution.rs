@@ -223,6 +223,44 @@ fn load_alias_config_preserves_fallback_targets_and_catch_all_rules() {
 }
 
 #[test]
+fn load_alias_config_accepts_middle_wildcard_targets() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let config_path = temp_dir.path().join("tsconfig.json");
+    fs::write(
+        &config_path,
+        r#"{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "components/*": ["src/components/*/index"]
+    }
+  }
+}
+"#,
+    )
+    .expect("write middle-wildcard tsconfig");
+
+    let loaded = load_alias_config(temp_dir.path())
+        .expect("load alias config")
+        .expect("tsconfig.json should be discovered");
+
+    assert_eq!(loaded.path, config_path);
+    assert_eq!(
+        loaded.config.rules,
+        vec![AliasRule {
+            pattern: "components/*".to_string(),
+            specifier_prefix: "components/".to_string(),
+            replacement_targets: vec![AliasTarget {
+                pattern: "src/components/*/index".to_string(),
+                replacement_prefix: "src/components/".to_string(),
+                path_candidate: temp_dir.path().join("src/components"),
+            }],
+            wildcard: true,
+        }]
+    );
+}
+
+#[test]
 fn load_alias_config_preserves_raw_package_remap_targets() {
     let temp_dir = tempdir().expect("create temp dir");
     let config_path = temp_dir.path().join("tsconfig.json");

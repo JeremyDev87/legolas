@@ -271,9 +271,23 @@ fn parse_paths(
     // Keep more-specific rules first so later matchers can use this order directly.
     rules.sort_by(|left, right| {
         right
-            .specifier_prefix
-            .len()
-            .cmp(&left.specifier_prefix.len())
+            .pattern
+            .chars()
+            .filter(|character| *character != '*')
+            .count()
+            .cmp(
+                &left
+                    .pattern
+                    .chars()
+                    .filter(|character| *character != '*')
+                    .count(),
+            )
+            .then_with(|| {
+                right
+                    .specifier_prefix
+                    .len()
+                    .cmp(&left.specifier_prefix.len())
+            })
             .then_with(|| left.wildcard.cmp(&right.wildcard))
             .then_with(|| left.pattern.cmp(&right.pattern))
     });
@@ -317,17 +331,21 @@ fn parse_rule_pattern(value: &str, config_path: &Path, key_path: &str) -> Result
         });
     }
 
-    if wildcard_count != 1 || !(value == "*" || value.ends_with("/*")) {
+    if wildcard_count != 1 {
         return unsupported_shape(
             config_path,
             key_path,
-            "expected exact value, catch-all *, or a single trailing /* wildcard pattern",
+            "expected exact value or a single * wildcard pattern",
         );
     }
 
+    let (prefix, _) = value
+        .split_once('*')
+        .expect("single wildcard patterns always split");
+
     Ok(ParsedPattern {
         original: value.to_string(),
-        prefix: value.trim_end_matches('*').to_string(),
+        prefix: prefix.to_string(),
         wildcard: true,
     })
 }
