@@ -54,6 +54,10 @@ fn matches_scan_visualize_and_optimize_oracles() {
             vec!["optimize".to_string(), fixture.display().to_string()],
             "basic-app/optimize.txt",
         ),
+        (
+            vec!["budget".to_string(), fixture.display().to_string()],
+            "basic-app/budget.txt",
+        ),
     ];
 
     for (args, oracle) in cases {
@@ -104,10 +108,28 @@ fn matches_validation_error_oracles() {
         ),
         (
             vec![
+                "visualize".to_string(),
+                fixture.display().to_string(),
+                "--limit".to_string(),
+                "-1".to_string(),
+            ],
+            "errors/visualize-limit.txt",
+        ),
+        (
+            vec![
                 "optimize".to_string(),
                 fixture.display().to_string(),
                 "--top".to_string(),
                 "NaN".to_string(),
+            ],
+            "errors/optimize-top.txt",
+        ),
+        (
+            vec![
+                "optimize".to_string(),
+                fixture.display().to_string(),
+                "--top".to_string(),
+                "-1".to_string(),
             ],
             "errors/optimize-top.txt",
         ),
@@ -148,9 +170,27 @@ fn matches_missing_number_and_unknown_flag_contracts() {
         ),
         (
             vec![
+                "--limit".to_string(),
+                "-1".to_string(),
+                "visualize".to_string(),
+                fixture.display().to_string(),
+            ],
+            "legolas: --limit expects a number\n",
+        ),
+        (
+            vec![
                 "optimize".to_string(),
                 fixture.display().to_string(),
                 "--top".to_string(),
+            ],
+            "legolas: --top expects a number\n",
+        ),
+        (
+            vec![
+                "--top".to_string(),
+                "-1".to_string(),
+                "optimize".to_string(),
+                fixture.display().to_string(),
             ],
             "legolas: --top expects a number\n",
         ),

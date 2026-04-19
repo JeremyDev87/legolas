@@ -2,10 +2,14 @@ use std::{fs, path::PathBuf};
 
 use legolas_cli::{
     argv::{self, Command},
-    reporters::text::{format_optimize_report, format_scan_report, format_visualization_report},
+    reporters::text::{
+        format_budget_report, format_optimize_report, format_scan_report,
+        format_visualization_report,
+    },
 };
 use legolas_core::{
     analyze_project,
+    budget::evaluate_budget,
     config::{load_config_file, load_discovered_config, LoadedConfig},
     LegolasError, Result,
 };
@@ -17,6 +21,7 @@ Usage:
   legolas scan [path] [--config file] [--json]
   legolas visualize [path] [--config file] [--limit 10]
   legolas optimize [path] [--config file] [--top 5]
+  legolas budget [path] [--config file] [--json]
   legolas help
 
 Examples:
@@ -24,6 +29,7 @@ Examples:
   legolas scan --config ./legolas.config.json
   legolas visualize ./apps/storefront --limit 12
   legolas optimize --top 7
+  legolas budget ./apps/storefront --json
 "#;
 
 fn main() {
@@ -52,14 +58,33 @@ fn run() -> Result<()> {
             "unknown command \"{command}\""
         )));
     }
+    validate_command_flags(&command, &parsed)?;
 
     let loaded_config = resolve_loaded_config(&parsed)?;
     emit_config_warnings(loaded_config.as_ref(), parsed.json);
     let target_path = resolve_target_path(&parsed, loaded_config.as_ref())?;
     let analysis = analyze_project(&target_path)?;
+    let budget_evaluation = matches!(command, Command::Budget).then(|| {
+        evaluate_budget(
+            &analysis,
+            loaded_config
+                .as_ref()
+                .and_then(|item| item.config.budget_rules.as_ref()),
+        )
+    });
 
     if parsed.json {
-        println!("{}", serde_json::to_string_pretty(&analysis)?);
+        match command {
+            Command::Budget => println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    budget_evaluation
+                        .as_ref()
+                        .expect("budget evaluation exists for budget command"),
+                )?
+            ),
+            _ => println!("{}", serde_json::to_string_pretty(&analysis)?),
+        }
         return Ok(());
     }
 
@@ -72,6 +97,12 @@ fn run() -> Result<()> {
         Command::Optimize => format_optimize_report(
             &analysis,
             resolve_optimize_top(&parsed, loaded_config.as_ref()),
+        ),
+        Command::Budget => format_budget_report(
+            &analysis,
+            budget_evaluation
+                .as_ref()
+                .expect("budget evaluation exists for budget command"),
         ),
         Command::Help | Command::Unknown(_) => unreachable!("handled above"),
     };
@@ -169,4 +200,20 @@ fn resolve_config_relative_path(config: &LoadedConfig, value: &str) -> PathBuf {
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
         .join(path)
+}
+
+fn validate_command_flags(command: &Command, parsed: &argv::CliArgs) -> Result<()> {
+    if matches!(command, Command::Budget) {
+        if parsed.limit.is_some() {
+            return Err(LegolasError::CliUsage(
+                "unknown flag \"--limit\"".to_string(),
+            ));
+        }
+
+        if parsed.top.is_some() {
+            return Err(LegolasError::CliUsage("unknown flag \"--top\"".to_string()));
+        }
+    }
+
+    Ok(())
 }

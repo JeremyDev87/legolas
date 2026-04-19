@@ -1,0 +1,8 @@
+Legolas budget for basic-parity-app
+
+Overall status: Fail
+
+Rule results:
+- potentialKbSaved: Fail (actual: 366, warnAt: 40, failAt: 80)
+- duplicatePackageCount: Pass (actual: 1, warnAt: 2, failAt: 4)
+- dynamicImportCount: Fail (actual: 0, warnAt: 1, failAt: 0)
