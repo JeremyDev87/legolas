@@ -169,6 +169,7 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
                 recommendation: "Prefer per-method imports or lodash-es.".to_string(),
                 estimated_kb: 26,
                 files: vec!["basic/Dashboard.tsx".to_string()],
+                finding: Default::default(),
             },
             TreeShakingWarning {
                 key: "react-icons-root-import".to_string(),
@@ -180,6 +181,7 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
                     "basic/Dashboard.tsx".to_string(),
                     "vue/Widget.vue".to_string()
                 ],
+                finding: Default::default(),
             },
             TreeShakingWarning {
                 key: "namespace-ui-import".to_string(),
@@ -190,6 +192,7 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
                     .to_string(),
                 estimated_kb: 35,
                 files: vec!["jsx/View.jsx".to_string()],
+                finding: Default::default(),
             },
         ]
     );

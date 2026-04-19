@@ -83,6 +83,7 @@ fn parses_npm_v1_duplicates_from_dependency_trees_and_sorts_versions_naturally()
                     ],
                     count: 3,
                     estimated_extra_kb: 36,
+                    finding: Default::default(),
                 },
                 duplicate("left-pad", &["1.0.0", "1.0.1"]),
             ],
@@ -306,6 +307,7 @@ fn sorts_versions_like_js_locale_compare_numeric() {
             versions: expected_versions,
             count: input_versions.len(),
             estimated_extra_kb: 162,
+            finding: Default::default(),
         }]
     );
 }
@@ -360,6 +362,7 @@ fn duplicate(name: &str, versions: &[&str]) -> DuplicatePackage {
         versions: versions.iter().map(|value| (*value).to_string()).collect(),
         count: versions.len(),
         estimated_extra_kb: usize::max((versions.len().saturating_sub(1)) * 18, 18),
+        finding: Default::default(),
     }
 }
 

@@ -7,7 +7,9 @@ use std::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::{error::Result, models::TreeShakingWarning, LegolasError};
+use crate::{
+    error::Result, models::TreeShakingWarning, FindingEvidence, FindingMetadata, LegolasError,
+};
 
 const IGNORED_DIRECTORIES: &[&str] = &[
     ".git",
@@ -118,6 +120,7 @@ struct WarningAccumulator {
     recommendation: String,
     estimated_kb: usize,
     files: BTreeSet<String>,
+    finding: FindingMetadata,
 }
 
 pub fn collect_source_files<P: AsRef<Path>>(project_root: P) -> Result<Vec<PathBuf>> {
@@ -358,6 +361,7 @@ fn merge_tree_shaking_warnings(warnings: Vec<TreeShakingWarning>) -> Vec<TreeSha
                 existing.files.insert(file);
             }
             existing.estimated_kb = existing.estimated_kb.max(warning.estimated_kb);
+            merge_finding_metadata(&mut existing.finding, warning.finding);
             continue;
         }
 
@@ -369,6 +373,7 @@ fn merge_tree_shaking_warnings(warnings: Vec<TreeShakingWarning>) -> Vec<TreeSha
             recommendation: warning.recommendation,
             estimated_kb: warning.estimated_kb,
             files: warning.files.into_iter().collect(),
+            finding: warning.finding,
         });
     }
 
@@ -381,8 +386,38 @@ fn merge_tree_shaking_warnings(warnings: Vec<TreeShakingWarning>) -> Vec<TreeSha
             recommendation: warning.recommendation,
             estimated_kb: warning.estimated_kb,
             files: warning.files.into_iter().collect(),
+            finding: warning.finding,
         })
         .collect()
+}
+
+fn merge_finding_metadata(existing: &mut FindingMetadata, mut incoming: FindingMetadata) {
+    if existing.finding_id.is_none() {
+        existing.finding_id = incoming.finding_id.take();
+    }
+
+    if existing.analysis_source.is_none() {
+        existing.analysis_source = incoming.analysis_source.take();
+    }
+
+    existing.evidence.append(&mut incoming.evidence);
+    normalize_finding_evidence(&mut existing.evidence);
+}
+
+fn normalize_finding_evidence(evidence: &mut Vec<FindingEvidence>) {
+    evidence.sort_by(|left, right| {
+        left.kind
+            .cmp(&right.kind)
+            .then(left.file.cmp(&right.file))
+            .then(left.specifier.cmp(&right.specifier))
+            .then(left.detail.cmp(&right.detail))
+    });
+    evidence.dedup_by(|left, right| {
+        left.kind == right.kind
+            && left.file == right.file
+            && left.specifier == right.specifier
+            && left.detail == right.detail
+    });
 }
 
 fn get_scannable_contents(file_path: &Path, contents: &str) -> String {
@@ -529,6 +564,7 @@ fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingW
             recommendation: "Import only the symbols you need from direct subpaths.".to_string(),
             estimated_kb: 35,
             files: Vec::new(),
+            finding: Default::default(),
         });
     }
 
@@ -541,6 +577,7 @@ fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingW
             recommendation: "Prefer per-method imports or lodash-es.".to_string(),
             estimated_kb: 26,
             files: Vec::new(),
+            finding: Default::default(),
         });
     }
 
@@ -552,6 +589,7 @@ fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingW
             recommendation: "Import from the specific icon pack path instead.".to_string(),
             estimated_kb: 22,
             files: Vec::new(),
+            finding: Default::default(),
         });
     }
 
@@ -1049,4 +1087,75 @@ fn to_posix_relative(project_root: &Path, file_path: &Path) -> String {
         .unwrap_or(file_path)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_tree_shaking_warnings;
+    use crate::{FindingAnalysisSource, FindingEvidence, FindingMetadata, TreeShakingWarning};
+
+    #[test]
+    fn merge_tree_shaking_warnings_preserves_and_dedupes_finding_metadata() {
+        let warnings = vec![
+            TreeShakingWarning {
+                key: "lodash-root-import".to_string(),
+                package_name: "lodash".to_string(),
+                message: "Root imports can keep extra code.".to_string(),
+                recommendation: "Prefer per-method imports.".to_string(),
+                estimated_kb: 20,
+                files: vec!["src/App.tsx".to_string()],
+                finding: FindingMetadata::new(
+                    "tree-shaking:lodash-root-import",
+                    FindingAnalysisSource::SourceImport,
+                )
+                .with_evidence([FindingEvidence::new("source-file")
+                    .with_file("src/App.tsx")
+                    .with_specifier("lodash")]),
+            },
+            TreeShakingWarning {
+                key: "lodash-root-import".to_string(),
+                package_name: "lodash".to_string(),
+                message: "Root imports can keep extra code.".to_string(),
+                recommendation: "Prefer per-method imports.".to_string(),
+                estimated_kb: 26,
+                files: vec!["src/Dashboard.tsx".to_string()],
+                finding: FindingMetadata::new(
+                    "tree-shaking:lodash-root-import",
+                    FindingAnalysisSource::SourceImport,
+                )
+                .with_evidence([
+                    FindingEvidence::new("source-file")
+                        .with_file("src/Dashboard.tsx")
+                        .with_specifier("lodash"),
+                    FindingEvidence::new("source-file")
+                        .with_file("src/App.tsx")
+                        .with_specifier("lodash"),
+                ]),
+            },
+        ];
+
+        let merged = merge_tree_shaking_warnings(warnings);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].estimated_kb, 26);
+        assert_eq!(
+            merged[0].files,
+            vec!["src/App.tsx".to_string(), "src/Dashboard.tsx".to_string()]
+        );
+        assert_eq!(
+            merged[0].finding,
+            FindingMetadata::new(
+                "tree-shaking:lodash-root-import",
+                FindingAnalysisSource::SourceImport,
+            )
+            .with_evidence([
+                FindingEvidence::new("source-file")
+                    .with_file("src/App.tsx")
+                    .with_specifier("lodash"),
+                FindingEvidence::new("source-file")
+                    .with_file("src/Dashboard.tsx")
+                    .with_specifier("lodash"),
+            ])
+        );
+    }
 }

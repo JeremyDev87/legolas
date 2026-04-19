@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "baseUrl": "src",
+    "paths": {
+      "~/*": ["components/*", "fallback/*"],
+      "#env": ["config/env.js"]
+    }
+  }
+}
