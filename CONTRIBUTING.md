@@ -36,9 +36,9 @@ helpers kept in JavaScript.
 legolas/
 ├── crates/        # Rust CLI and core analysis crates
 ├── bin/           # npm launcher
+├── test/          # launcher platform contract tests
 ├── scripts/       # packaging and vendor helpers
 ├── tests/         # parity fixtures and oracles
-└── src/           # legacy JS implementation retained until cutover cleanup
 ```
 
 ## How To Contribute

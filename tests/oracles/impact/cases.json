@@ -1,0 +1,177 @@
+[
+  {
+    "name": "directional_formula",
+    "payload": {
+      "heavyDependencies": [
+        { "estimatedKb": 600 },
+        { "estimatedKb": 500 },
+        { "estimatedKb": 400 },
+        { "estimatedKb": 300 },
+        { "estimatedKb": 200 },
+        { "estimatedKb": 100 }
+      ],
+      "duplicatePackages": [
+        { "estimatedExtraKb": 15 },
+        { "estimatedExtraKb": 5 }
+      ],
+      "lazyLoadCandidates": [
+        { "estimatedSavingsKb": 30 }
+      ],
+      "treeShakingWarnings": [
+        { "estimatedKb": 25 }
+      ]
+    },
+    "expected": {
+      "potentialKbSaved": 435,
+      "estimatedLcpImprovementMs": 914,
+      "confidence": "directional",
+      "summary": "High impact: the project has clear opportunities to reduce initial payload size."
+    }
+  },
+  {
+    "name": "unsorted_inputs",
+    "payload": {
+      "heavyDependencies": [
+        { "estimatedKb": 100 },
+        { "estimatedKb": 200 },
+        { "estimatedKb": 300 },
+        { "estimatedKb": 400 },
+        { "estimatedKb": 500 },
+        { "estimatedKb": 600 }
+      ],
+      "duplicatePackages": [
+        { "estimatedExtraKb": 15 },
+        { "estimatedExtraKb": 5 }
+      ],
+      "lazyLoadCandidates": [
+        { "estimatedSavingsKb": 30 }
+      ],
+      "treeShakingWarnings": [
+        { "estimatedKb": 25 }
+      ]
+    },
+    "expected": {
+      "potentialKbSaved": 345,
+      "estimatedLcpImprovementMs": 725,
+      "confidence": "directional",
+      "summary": "High impact: the project has clear opportunities to reduce initial payload size."
+    }
+  },
+  {
+    "name": "fractional_rounding",
+    "payload": {
+      "heavyDependencies": [
+        { "estimatedKb": 25 }
+      ],
+      "duplicatePackages": [],
+      "lazyLoadCandidates": [],
+      "treeShakingWarnings": []
+    },
+    "expected": {
+      "potentialKbSaved": 5,
+      "estimatedLcpImprovementMs": 11,
+      "confidence": "directional",
+      "summary": "Low impact: obvious bundle issues are limited in the current scan."
+    }
+  },
+  {
+    "name": "threshold_targeted",
+    "payload": {
+      "heavyDependencies": [
+        { "estimatedKb": 222 }
+      ],
+      "duplicatePackages": [],
+      "lazyLoadCandidates": [],
+      "treeShakingWarnings": []
+    },
+    "expected": {
+      "potentialKbSaved": 40,
+      "estimatedLcpImprovementMs": 84,
+      "confidence": "directional",
+      "summary": "Targeted impact: a handful of focused optimizations should pay off."
+    }
+  },
+  {
+    "name": "summary_low_zero",
+    "payload": {
+      "heavyDependencies": [],
+      "duplicatePackages": [],
+      "lazyLoadCandidates": [],
+      "treeShakingWarnings": []
+    },
+    "expected": {
+      "potentialKbSaved": 0,
+      "estimatedLcpImprovementMs": 0,
+      "confidence": "low",
+      "summary": "Low impact: obvious bundle issues are limited in the current scan."
+    }
+  },
+  {
+    "name": "summary_low_39",
+    "payload": {
+      "heavyDependencies": [],
+      "duplicatePackages": [
+        { "estimatedExtraKb": 39 }
+      ],
+      "lazyLoadCandidates": [],
+      "treeShakingWarnings": []
+    },
+    "expected": {
+      "potentialKbSaved": 39,
+      "estimatedLcpImprovementMs": 82,
+      "confidence": "directional",
+      "summary": "Low impact: obvious bundle issues are limited in the current scan."
+    }
+  },
+  {
+    "name": "summary_targeted_40",
+    "payload": {
+      "heavyDependencies": [],
+      "duplicatePackages": [
+        { "estimatedExtraKb": 40 }
+      ],
+      "lazyLoadCandidates": [],
+      "treeShakingWarnings": []
+    },
+    "expected": {
+      "potentialKbSaved": 40,
+      "estimatedLcpImprovementMs": 84,
+      "confidence": "directional",
+      "summary": "Targeted impact: a handful of focused optimizations should pay off."
+    }
+  },
+  {
+    "name": "summary_medium_120",
+    "payload": {
+      "heavyDependencies": [],
+      "duplicatePackages": [
+        { "estimatedExtraKb": 120 }
+      ],
+      "lazyLoadCandidates": [],
+      "treeShakingWarnings": []
+    },
+    "expected": {
+      "potentialKbSaved": 120,
+      "estimatedLcpImprovementMs": 252,
+      "confidence": "directional",
+      "summary": "Medium impact: there are several meaningful bundle wins available."
+    }
+  },
+  {
+    "name": "summary_high_300",
+    "payload": {
+      "heavyDependencies": [],
+      "duplicatePackages": [
+        { "estimatedExtraKb": 300 }
+      ],
+      "lazyLoadCandidates": [],
+      "treeShakingWarnings": []
+    },
+    "expected": {
+      "potentialKbSaved": 300,
+      "estimatedLcpImprovementMs": 630,
+      "confidence": "directional",
+      "summary": "High impact: the project has clear opportunities to reduce initial payload size."
+    }
+  }
+]

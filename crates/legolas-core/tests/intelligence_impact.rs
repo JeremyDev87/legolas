@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::{fs, path::PathBuf};
 
 use legolas_core::{
     impact::estimate_impact,
@@ -6,11 +6,11 @@ use legolas_core::{
     package_intelligence::{get_package_intel, package_intelligence_entries, PackageIntel},
 };
 use serde::Deserialize;
-use serde_json::json;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct JsPackageIntel {
+struct SnapshotPackageIntel {
+    package_name: String,
     estimated_kb: usize,
     category: String,
     rationale: String,
@@ -18,19 +18,22 @@ struct JsPackageIntel {
 }
 
 #[test]
-fn get_package_intel_matches_every_js_registry_entry() {
+fn get_package_intel_matches_registry_snapshot() {
     let rust_entries = package_intelligence_entries();
     let rust_keys: Vec<&str> = rust_entries.iter().map(|(key, _)| *key).collect();
-    let js_entries = load_js_package_intelligence();
-    let js_keys: Vec<&str> = js_entries.iter().map(|(key, _)| key.as_str()).collect();
+    let snapshot_entries = load_package_intelligence_snapshot();
+    let snapshot_keys: Vec<&str> = snapshot_entries
+        .iter()
+        .map(|entry| entry.package_name.as_str())
+        .collect();
 
-    assert_eq!(rust_keys, js_keys);
-    assert_eq!(js_entries.len(), rust_entries.len());
+    assert_eq!(rust_keys, snapshot_keys);
+    assert_eq!(snapshot_entries.len(), rust_entries.len());
 
-    for ((rust_key, rust_intel), (js_key, js_intel)) in rust_entries.iter().zip(js_entries) {
-        assert_eq!(*rust_key, js_key);
+    for ((rust_key, rust_intel), snapshot_entry) in rust_entries.iter().zip(snapshot_entries) {
+        assert_eq!(*rust_key, snapshot_entry.package_name);
         assert_eq!(get_package_intel(rust_key), Some(*rust_intel));
-        assert_eq!(snapshot(*rust_intel), js_intel);
+        assert_eq!(snapshot(rust_key, *rust_intel), snapshot_entry);
     }
 }
 
@@ -42,33 +45,11 @@ fn get_package_intel_requires_an_exact_package_key_match() {
 }
 
 #[test]
-fn estimate_impact_matches_the_js_directional_formula() {
-    let heavy_dependencies = vec![
-        heavy_dependency(600),
-        heavy_dependency(500),
-        heavy_dependency(400),
-        heavy_dependency(300),
-        heavy_dependency(200),
-        heavy_dependency(100),
-    ];
-    let duplicate_packages = vec![duplicate_package(15), duplicate_package(5)];
-    let lazy_load_candidates = vec![lazy_load_candidate(30)];
-    let tree_shaking_warnings = vec![tree_shaking_warning(25)];
+fn estimate_impact_matches_snapshot_directional_formula() {
+    let case = load_impact_case("directional_formula");
+    let impact = estimate_impact_for_payload(&case.payload);
 
-    let impact = estimate_impact(
-        &heavy_dependencies,
-        &duplicate_packages,
-        &lazy_load_candidates,
-        &tree_shaking_warnings,
-    );
-    let js_impact = load_js_impact(&impact_payload(
-        &[600, 500, 400, 300, 200, 100],
-        &[15, 5],
-        &[30],
-        &[25],
-    ));
-
-    assert_eq!(impact, js_impact);
+    assert_eq!(impact, case.expected);
     assert_eq!(impact.potential_kb_saved, 435);
     assert_eq!(impact.estimated_lcp_improvement_ms, 914);
     assert_eq!(impact.confidence, "directional");
@@ -79,38 +60,20 @@ fn estimate_impact_matches_the_js_directional_formula() {
 }
 
 #[test]
-fn estimate_impact_matches_js_oracle_for_unsorted_inputs() {
-    let impact = estimate_impact(
-        &[
-            heavy_dependency(100),
-            heavy_dependency(200),
-            heavy_dependency(300),
-            heavy_dependency(400),
-            heavy_dependency(500),
-            heavy_dependency(600),
-        ],
-        &[duplicate_package(15), duplicate_package(5)],
-        &[lazy_load_candidate(30)],
-        &[tree_shaking_warning(25)],
-    );
-    let js_impact = load_js_impact(&impact_payload(
-        &[100, 200, 300, 400, 500, 600],
-        &[15, 5],
-        &[30],
-        &[25],
-    ));
+fn estimate_impact_matches_snapshot_for_unsorted_inputs() {
+    let case = load_impact_case("unsorted_inputs");
+    let impact = estimate_impact_for_payload(&case.payload);
 
-    assert_eq!(impact, js_impact);
+    assert_eq!(impact, case.expected);
     assert_eq!(impact.potential_kb_saved, 345);
     assert_eq!(impact.estimated_lcp_improvement_ms, 725);
 }
 
 #[test]
 fn estimate_impact_preserves_fractional_rounding_behavior() {
-    let impact = estimate_impact(&[heavy_dependency(25)], &[], &[], &[]);
-    let js_impact = load_js_impact(&impact_payload(&[25], &[], &[], &[]));
+    let impact = estimate_impact_for_payload(&load_impact_case("fractional_rounding").payload);
 
-    assert_eq!(impact, js_impact);
+    assert_eq!(impact, load_impact_case("fractional_rounding").expected);
     assert_eq!(impact.potential_kb_saved, 5);
     assert_eq!(impact.estimated_lcp_improvement_ms, 11);
     assert_eq!(impact.confidence, "directional");
@@ -119,10 +82,13 @@ fn estimate_impact_preserves_fractional_rounding_behavior() {
         "Low impact: obvious bundle issues are limited in the current scan."
     );
 
-    let threshold_impact = estimate_impact(&[heavy_dependency(222)], &[], &[], &[]);
-    let js_threshold_impact = load_js_impact(&impact_payload(&[222], &[], &[], &[]));
+    let threshold_impact =
+        estimate_impact_for_payload(&load_impact_case("threshold_targeted").payload);
 
-    assert_eq!(threshold_impact, js_threshold_impact);
+    assert_eq!(
+        threshold_impact,
+        load_impact_case("threshold_targeted").expected
+    );
     assert_eq!(threshold_impact.potential_kb_saved, 40);
     assert_eq!(threshold_impact.estimated_lcp_improvement_ms, 84);
     assert_eq!(
@@ -135,51 +101,42 @@ fn estimate_impact_preserves_fractional_rounding_behavior() {
 fn estimate_impact_uses_the_js_summary_thresholds() {
     let cases = [
         (
+            "summary_low_zero",
             0,
             "low",
             "Low impact: obvious bundle issues are limited in the current scan.",
         ),
         (
+            "summary_low_39",
             39,
             "directional",
             "Low impact: obvious bundle issues are limited in the current scan.",
         ),
         (
+            "summary_targeted_40",
             40,
             "directional",
             "Targeted impact: a handful of focused optimizations should pay off.",
         ),
         (
+            "summary_medium_120",
             120,
             "directional",
             "Medium impact: there are several meaningful bundle wins available.",
         ),
         (
+            "summary_high_300",
             300,
             "directional",
             "High impact: the project has clear opportunities to reduce initial payload size.",
         ),
     ];
 
-    for (potential_kb_saved, expected_confidence, expected_summary) in cases {
-        let duplicate_packages = if potential_kb_saved == 0 {
-            Vec::new()
-        } else {
-            vec![duplicate_package(potential_kb_saved)]
-        };
+    for (case_name, potential_kb_saved, expected_confidence, expected_summary) in cases {
+        let case = load_impact_case(case_name);
+        let impact = estimate_impact_for_payload(&case.payload);
 
-        let impact = estimate_impact(&[], &duplicate_packages, &[], &[]);
-        let js_impact = load_js_impact(&impact_payload(
-            &[],
-            &duplicate_packages
-                .iter()
-                .map(|item| item.estimated_extra_kb)
-                .collect::<Vec<_>>(),
-            &[],
-            &[],
-        ));
-
-        assert_eq!(impact, js_impact);
+        assert_eq!(impact, case.expected);
         assert_eq!(impact.potential_kb_saved, potential_kb_saved);
         assert_eq!(impact.confidence, expected_confidence);
         assert_eq!(impact.summary, expected_summary);
@@ -214,8 +171,9 @@ fn tree_shaking_warning(estimated_kb: usize) -> TreeShakingWarning {
     }
 }
 
-fn snapshot(intel: PackageIntel) -> JsPackageIntel {
-    JsPackageIntel {
+fn snapshot(package_name: &str, intel: PackageIntel) -> SnapshotPackageIntel {
+    SnapshotPackageIntel {
+        package_name: package_name.to_string(),
         estimated_kb: intel.estimated_kb,
         category: intel.category.to_string(),
         rationale: intel.rationale.to_string(),
@@ -223,105 +181,92 @@ fn snapshot(intel: PackageIntel) -> JsPackageIntel {
     }
 }
 
-fn load_js_package_intelligence() -> Vec<(String, JsPackageIntel)> {
-    let repo_root = workspace_root();
-    let script = r#"
-import fs from "node:fs";
-import path from "node:path";
-import vm from "node:vm";
-
-const repoRoot = process.argv[1];
-const sourcePath = path.join(repoRoot, "src/core/package-intelligence.js");
-const source = fs.readFileSync(sourcePath, "utf8").replace(
-  "export function getPackageIntel",
-  "function getPackageIntel"
-);
-const context = {};
-
-vm.runInNewContext(
-  `${source}\nresult = Object.entries(PACKAGE_INTELLIGENCE);`,
-  context
-);
-
-console.log(JSON.stringify(context.result));
-"#;
-
-    let output = Command::new("node")
-        .arg("--input-type=module")
-        .arg("-e")
-        .arg(script)
-        .arg(repo_root.display().to_string())
-        .current_dir(&repo_root)
-        .output()
-        .expect("run node for JS package intelligence");
-
-    assert!(
-        output.status.success(),
-        "node exited unsuccessfully: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    serde_json::from_slice(&output.stdout).expect("deserialize JS package intelligence")
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImpactCaseSnapshot {
+    name: String,
+    payload: ImpactPayloadSnapshot,
+    expected: Impact,
 }
 
-fn load_js_impact(payload: &serde_json::Value) -> Impact {
-    let repo_root = workspace_root();
-    let payload_json = serde_json::to_string(payload).expect("serialize JS impact payload");
-    let script = r#"
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-
-const repoRoot = process.argv[1];
-const payload = JSON.parse(process.argv[2]);
-const moduleUrl = pathToFileURL(path.join(repoRoot, "src/core/estimate-impact.js")).href;
-const { estimateImpact } = await import(moduleUrl);
-
-console.log(JSON.stringify(estimateImpact(payload)));
-"#;
-
-    let output = Command::new("node")
-        .arg("--input-type=module")
-        .arg("-e")
-        .arg(script)
-        .arg(repo_root.display().to_string())
-        .arg(payload_json)
-        .current_dir(&repo_root)
-        .output()
-        .expect("run node for JS impact");
-
-    assert!(
-        output.status.success(),
-        "node exited unsuccessfully: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    serde_json::from_slice(&output.stdout).expect("deserialize JS impact")
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImpactPayloadSnapshot {
+    heavy_dependencies: Vec<EstimatedKbSnapshot>,
+    duplicate_packages: Vec<EstimatedExtraKbSnapshot>,
+    lazy_load_candidates: Vec<EstimatedSavingsKbSnapshot>,
+    tree_shaking_warnings: Vec<EstimatedKbSnapshot>,
 }
 
-fn impact_payload(
-    heavy_dependencies: &[usize],
-    duplicate_packages: &[usize],
-    lazy_load_candidates: &[usize],
-    tree_shaking_warnings: &[usize],
-) -> serde_json::Value {
-    json!({
-        "heavyDependencies": heavy_dependencies
-            .iter()
-            .map(|estimated_kb| json!({ "estimatedKb": estimated_kb }))
-            .collect::<Vec<_>>(),
-        "duplicatePackages": duplicate_packages
-            .iter()
-            .map(|estimated_extra_kb| json!({ "estimatedExtraKb": estimated_extra_kb }))
-            .collect::<Vec<_>>(),
-        "lazyLoadCandidates": lazy_load_candidates
-            .iter()
-            .map(|estimated_savings_kb| json!({ "estimatedSavingsKb": estimated_savings_kb }))
-            .collect::<Vec<_>>(),
-        "treeShakingWarnings": tree_shaking_warnings
-            .iter()
-            .map(|estimated_kb| json!({ "estimatedKb": estimated_kb }))
-            .collect::<Vec<_>>(),
-    })
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EstimatedKbSnapshot {
+    estimated_kb: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EstimatedExtraKbSnapshot {
+    estimated_extra_kb: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EstimatedSavingsKbSnapshot {
+    estimated_savings_kb: usize,
+}
+
+fn load_package_intelligence_snapshot() -> Vec<SnapshotPackageIntel> {
+    let contents = fs::read_to_string(
+        workspace_root().join("tests/oracles/package-intelligence/registry.json"),
+    )
+    .expect("read package intelligence snapshot");
+
+    serde_json::from_str(&contents).expect("deserialize package intelligence snapshot")
+}
+
+fn load_impact_case(case_name: &str) -> ImpactCaseSnapshot {
+    load_impact_cases()
+        .into_iter()
+        .find(|entry| entry.name == case_name)
+        .unwrap_or_else(|| panic!("missing impact case snapshot: {case_name}"))
+}
+
+fn load_impact_cases() -> Vec<ImpactCaseSnapshot> {
+    let contents = fs::read_to_string(workspace_root().join("tests/oracles/impact/cases.json"))
+        .expect("read impact case snapshot");
+
+    serde_json::from_str(&contents).expect("deserialize impact case snapshot")
+}
+
+fn estimate_impact_for_payload(payload: &ImpactPayloadSnapshot) -> Impact {
+    let heavy_dependencies = payload
+        .heavy_dependencies
+        .iter()
+        .map(|entry| heavy_dependency(entry.estimated_kb))
+        .collect::<Vec<_>>();
+    let duplicate_packages = payload
+        .duplicate_packages
+        .iter()
+        .map(|entry| duplicate_package(entry.estimated_extra_kb))
+        .collect::<Vec<_>>();
+    let lazy_load_candidates = payload
+        .lazy_load_candidates
+        .iter()
+        .map(|entry| lazy_load_candidate(entry.estimated_savings_kb))
+        .collect::<Vec<_>>();
+    let tree_shaking_warnings = payload
+        .tree_shaking_warnings
+        .iter()
+        .map(|entry| tree_shaking_warning(entry.estimated_kb))
+        .collect::<Vec<_>>();
+
+    estimate_impact(
+        &heavy_dependencies,
+        &duplicate_packages,
+        &lazy_load_candidates,
+        &tree_shaking_warnings,
+    )
 }
 
 fn workspace_root() -> PathBuf {
