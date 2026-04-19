@@ -373,40 +373,59 @@ fn is_local_alias_import(specifier: &str, alias_config: Option<&AliasConfig>) ->
     };
 
     alias_config.rules.iter().any(|rule| {
-        match_alias_rule(rule, specifier).is_some_and(|suffix| {
+        match_alias_rule(rule, specifier).is_some_and(|capture| {
             rule.replacement_targets
                 .iter()
-                .any(|target| alias_target_exists(target, suffix))
+                .any(|target| alias_target_exists(target, capture))
         })
     })
 }
 
 fn match_alias_rule<'a>(rule: &crate::aliases::AliasRule, specifier: &'a str) -> Option<&'a str> {
-    if rule.wildcard {
-        specifier.strip_prefix(&rule.specifier_prefix)
-    } else if specifier == rule.specifier_prefix {
-        Some("")
+    if !rule.wildcard {
+        return (specifier == rule.specifier_prefix).then_some("");
+    }
+
+    let capture = specifier.strip_prefix(&rule.specifier_prefix)?;
+    let suffix = wildcard_suffix(&rule.pattern);
+
+    if suffix.is_empty() {
+        Some(capture)
     } else {
-        None
+        capture.strip_suffix(suffix)
     }
 }
 
-fn alias_target_exists(target: &AliasTarget, suffix: &str) -> bool {
-    resolved_alias_candidates(target, suffix)
-        .into_iter()
-        .any(|candidate| !is_package_install_path(&candidate) && path_exists(&candidate))
+fn wildcard_suffix(pattern: &str) -> &str {
+    pattern
+        .split_once('*')
+        .map(|(_, suffix)| suffix)
+        .unwrap_or("")
 }
 
-fn alias_candidate_path(target: &AliasTarget, suffix: &str) -> PathBuf {
-    if suffix.is_empty() {
+fn alias_target_exists(target: &AliasTarget, capture: &str) -> bool {
+    resolved_alias_candidates(target, capture)
+        .into_iter()
+        .any(|candidate| is_local_alias_candidate(&candidate))
+}
+
+fn alias_candidate_path(target: &AliasTarget, capture: &str) -> PathBuf {
+    if !target.pattern.contains('*') {
         return target.path_candidate.clone();
     }
 
-    target.path_candidate.join(Path::new(suffix))
+    let relative_tail = format!("{capture}{}", wildcard_suffix(&target.pattern));
+    let relative_tail = relative_tail.trim_start_matches('/');
+
+    if relative_tail.is_empty() {
+        target.path_candidate.clone()
+    } else {
+        target.path_candidate.join(Path::new(relative_tail))
+    }
 }
 
-fn resolved_alias_candidates(target: &AliasTarget, suffix: &str) -> Vec<PathBuf> {
-    let candidate = alias_candidate_path(target, suffix);
+fn resolved_alias_candidates(target: &AliasTarget, capture: &str) -> Vec<PathBuf> {
+    let candidate = alias_candidate_path(target, capture);
     let mut candidates = vec![candidate.clone()];
 
     if candidate.extension().is_none() {
@@ -425,6 +444,17 @@ fn resolved_alias_candidates(target: &AliasTarget, suffix: &str) -> Vec<PathBuf>
 
 fn path_exists(path: &Path) -> bool {
     fs::metadata(path).is_ok()
+}
+
+fn is_local_alias_candidate(path: &Path) -> bool {
+    if !path_exists(path) || is_package_install_path(path) {
+        return false;
+    }
+
+    match fs::canonicalize(path) {
+        Ok(canonical) => !is_package_install_path(&canonical),
+        Err(_) => true,
+    }
 }
 
 fn is_package_install_path(path: &Path) -> bool {

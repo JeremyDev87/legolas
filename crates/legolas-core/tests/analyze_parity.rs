@@ -2,6 +2,11 @@ mod support;
 
 use std::{fs, path::Path};
 
+#[cfg(unix)]
+use std::os::unix::fs::symlink as create_dir_symlink;
+#[cfg(windows)]
+use std::os::windows::fs::symlink_dir as create_dir_symlink;
+
 use legolas_core::{analyze_project, LegolasError};
 use regex::Regex;
 use tempfile::tempdir;
@@ -210,6 +215,58 @@ fn analyze_project_surfaces_malformed_alias_configs_instead_of_falling_back() {
 }
 
 #[test]
+fn analyze_project_uses_middle_wildcard_alias_targets_to_ignore_local_imports() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "middle-wildcard-alias-analysis-app",
+  "dependencies": {
+    "components": "^1.0.0"
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "tsconfig.json",
+        r#"{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "components/*": ["src/components/*/index"]
+    }
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "src/App.tsx",
+        "import Button from \"components/button\";\nexport default Button;\n",
+    );
+    write_file(
+        root,
+        "src/components/button/index.ts",
+        "const Button = 'button';\nexport default Button;\n",
+    );
+
+    let analysis = analyze_project(root).expect("analyze middle-wildcard alias project");
+
+    assert_eq!(analysis.source_summary.imported_packages, 0);
+    assert_eq!(analysis.source_summary.dynamic_imports, 0);
+    assert_eq!(
+        analysis
+            .unused_dependency_candidates
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["components"]
+    );
+}
+
+#[test]
 fn analyze_project_keeps_node_modules_package_remaps_as_used_dependencies() {
     let temp = tempdir().expect("create temp dir");
     let root = temp.path();
@@ -295,6 +352,56 @@ fn analyze_project_counts_dynamic_alias_entries_even_without_package_usage() {
 
     assert_eq!(analysis.source_summary.imported_packages, 0);
     assert_eq!(analysis.source_summary.dynamic_imports, 2);
+}
+
+#[test]
+fn analyze_project_keeps_symlinked_package_remaps_as_used_dependencies() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "symlink-package-remap-analysis-app",
+  "dependencies": {
+    "react": "^18.2.0"
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "tsconfig.json",
+        r#"{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "react": ["vendor/react"]
+    }
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "src/App.tsx",
+        "import { h } from \"react\";\nexport const App = h;\n",
+    );
+    write_file(
+        root,
+        "node_modules/preact/compat/index.js",
+        "export const h = () => null;\n",
+    );
+    fs::create_dir_all(root.join("vendor")).expect("create vendor dir");
+    create_dir_symlink(
+        root.join("node_modules/preact/compat"),
+        root.join("vendor/react"),
+    )
+    .expect("create vendor symlink");
+
+    let analysis = analyze_project(root).expect("analyze symlink package-remap project");
+
+    assert_eq!(analysis.source_summary.imported_packages, 1);
+    assert!(analysis.unused_dependency_candidates.is_empty());
 }
 
 fn write_file(root: &Path, relative_path: &str, contents: &str) {

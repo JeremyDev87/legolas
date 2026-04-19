@@ -5,6 +5,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(unix)]
+use std::os::unix::fs::symlink as create_dir_symlink;
+#[cfg(windows)]
+use std::os::windows::fs::symlink_dir as create_dir_symlink;
+
 use legolas_core::{
     import_scanner::{
         collect_source_files, scan_imports, scan_imports_with_aliases, ImportedPackageRecord,
@@ -256,6 +261,56 @@ fn scan_imports_excludes_jsconfig_backed_exact_aliases_from_package_usage() {
 }
 
 #[test]
+fn scan_imports_excludes_middle_wildcard_alias_patterns_from_package_usage() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "middle-wildcard-alias-app",
+  "private": true
+}"#,
+    );
+    write_file(
+        root,
+        "tsconfig.json",
+        r#"{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "components/*/public": ["src/components/*/index"]
+    }
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "src/App.tsx",
+        "import Button from \"components/button/public\";\nexport default Button;\n",
+    );
+    write_file(
+        root,
+        "src/components/button/index.ts",
+        "const Button = 'button';\nexport default Button;\n",
+    );
+
+    let files = collect_source_files(root).expect("collect middle-wildcard source files");
+    let alias_config = load_alias_config(root)
+        .expect("load middle-wildcard alias config")
+        .expect("middle-wildcard alias config should exist");
+
+    let legacy = scan_imports(root, &files).expect("scan imports without alias config");
+    let alias_aware = scan_imports_with_aliases(root, &files, Some(&alias_config.config))
+        .expect("scan imports with alias config");
+
+    assert!(legacy.by_package.contains_key("components"));
+    assert!(alias_aware.by_package.is_empty());
+    assert_eq!(alias_aware.imported_packages.len(), 0);
+    assert_eq!(alias_aware.dynamic_import_count, 0);
+}
+
+#[test]
 fn scan_imports_keeps_node_modules_package_remaps_counted_as_packages() {
     let temp = tempdir().expect("create temp dir");
     let root = temp.path();
@@ -346,6 +401,58 @@ fn scan_imports_counts_dynamic_entries_even_when_aliases_are_local() {
 
     assert_eq!(alias_aware.imported_packages.len(), 0);
     assert_eq!(alias_aware.dynamic_import_count, 2);
+}
+
+#[test]
+fn scan_imports_keeps_symlinked_package_remaps_counted_as_packages() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "symlink-package-remap-app",
+  "private": true
+}"#,
+    );
+    write_file(
+        root,
+        "tsconfig.json",
+        r#"{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "react": ["vendor/react"]
+    }
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "src/App.tsx",
+        "import { h } from \"react\";\nexport const App = h;\n",
+    );
+    write_file(
+        root,
+        "node_modules/preact/compat/index.js",
+        "export const h = () => null;\n",
+    );
+    fs::create_dir_all(root.join("vendor")).expect("create vendor dir");
+    create_dir_symlink(
+        root.join("node_modules/preact/compat"),
+        root.join("vendor/react"),
+    )
+    .expect("create vendor symlink");
+
+    let files = collect_source_files(root).expect("collect symlink-remap source files");
+    let alias_config = load_alias_config(root)
+        .expect("load symlink-remap alias config")
+        .expect("symlink-remap alias config should exist");
+    let alias_aware = scan_imports_with_aliases(root, &files, Some(&alias_config.config))
+        .expect("scan imports with alias config");
+
+    assert!(alias_aware.by_package.contains_key("react"));
+    assert_eq!(alias_aware.imported_packages.len(), 1);
 }
 
 fn write_file(root: &Path, relative_path: &str, contents: &str) {
