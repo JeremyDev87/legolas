@@ -1,4 +1,5 @@
 pub mod analyze;
+pub mod config;
 pub mod error;
 pub mod impact;
 pub mod import_scanner;

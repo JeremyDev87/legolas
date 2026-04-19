@@ -42,6 +42,17 @@ pub fn find_project_root<P: AsRef<Path>>(input_path: P) -> Result<PathBuf> {
     }
 }
 
+pub fn find_discovered_config_path<P: AsRef<Path>>(input_path: P) -> Result<Option<PathBuf>> {
+    let project_root = find_project_root(input_path)?;
+    let config_path = project_root.join("legolas.config.json");
+
+    match fs::metadata(&config_path) {
+        Ok(_) => Ok(Some(config_path)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 pub fn read_text_if_exists<P: AsRef<Path>>(file_path: P) -> Result<Option<String>> {
     match fs::read_to_string(file_path.as_ref()) {
         Ok(contents) => Ok(Some(contents)),
