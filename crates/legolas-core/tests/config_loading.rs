@@ -165,6 +165,78 @@ fn load_discovered_config_reports_malformed_json_with_config_path() {
     }
 }
 
+#[test]
+fn load_config_file_rejects_invalid_max_threshold_ordering() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let config_path = temp_dir.path().join("legolas.config.json");
+    fs::write(
+        &config_path,
+        r#"{
+  "budget": {
+    "rules": {
+      "potentialKbSaved": { "warnAt": 80, "failAt": 40 }
+    }
+  }
+}
+"#,
+    )
+    .expect("write config");
+
+    let error = load_config_file(&config_path).expect_err("invalid max threshold should fail");
+
+    match error {
+        LegolasError::UnsupportedConfigShape {
+            path,
+            key_path,
+            message,
+        } => {
+            assert_eq!(path, config_path.display().to_string());
+            assert_eq!(key_path, "budget.rules.potentialKbSaved");
+            assert_eq!(
+                message,
+                "expected warnAt must be less than or equal to failAt for max rule"
+            );
+        }
+        other => panic!("expected unsupported config shape error, got {other:?}"),
+    }
+}
+
+#[test]
+fn load_config_file_rejects_invalid_min_threshold_ordering() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let config_path = temp_dir.path().join("legolas.config.json");
+    fs::write(
+        &config_path,
+        r#"{
+  "budget": {
+    "rules": {
+      "dynamicImportCount": { "warnAt": 0, "failAt": 1 }
+    }
+  }
+}
+"#,
+    )
+    .expect("write config");
+
+    let error = load_config_file(&config_path).expect_err("invalid min threshold should fail");
+
+    match error {
+        LegolasError::UnsupportedConfigShape {
+            path,
+            key_path,
+            message,
+        } => {
+            assert_eq!(path, config_path.display().to_string());
+            assert_eq!(key_path, "budget.rules.dynamicImportCount");
+            assert_eq!(
+                message,
+                "expected warnAt must be greater than or equal to failAt for min rule"
+            );
+        }
+        other => panic!("expected unsupported config shape error, got {other:?}"),
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn find_discovered_config_path_surfaces_metadata_failures_instead_of_hiding_them() {
