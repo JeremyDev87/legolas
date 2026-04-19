@@ -166,6 +166,10 @@ pub fn scan_imports_with_aliases<P: AsRef<Path>>(
             scan_source_file(&scannable_contents, supports_jsx_text_guard(&absolute_path));
 
         for entry in scanned.imports {
+            if entry.kind == ImportKind::Dynamic {
+                dynamic_import_count += 1;
+            }
+
             if is_local_alias_import(&entry.specifier, alias_config) {
                 continue;
             }
@@ -181,7 +185,6 @@ pub fn scan_imports_with_aliases<P: AsRef<Path>>(
             record.files.insert(relative_path.clone());
             if entry.kind == ImportKind::Dynamic {
                 record.dynamic_files.insert(relative_path.clone());
-                dynamic_import_count += 1;
             } else {
                 record.static_files.insert(relative_path.clone());
             }
@@ -389,11 +392,9 @@ fn match_alias_rule<'a>(rule: &crate::aliases::AliasRule, specifier: &'a str) ->
 }
 
 fn alias_target_exists(target: &AliasTarget, suffix: &str) -> bool {
-    let candidate = alias_candidate_path(target, suffix);
-    path_exists(&candidate)
-        || resolve_with_source_suffixes(&candidate)
-            .into_iter()
-            .any(|candidate| path_exists(&candidate))
+    resolved_alias_candidates(target, suffix)
+        .into_iter()
+        .any(|candidate| !is_package_install_path(&candidate) && path_exists(&candidate))
 }
 
 fn alias_candidate_path(target: &AliasTarget, suffix: &str) -> PathBuf {
@@ -404,8 +405,9 @@ fn alias_candidate_path(target: &AliasTarget, suffix: &str) -> PathBuf {
     target.path_candidate.join(Path::new(suffix))
 }
 
-fn resolve_with_source_suffixes(candidate: &Path) -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
+fn resolved_alias_candidates(target: &AliasTarget, suffix: &str) -> Vec<PathBuf> {
+    let candidate = alias_candidate_path(target, suffix);
+    let mut candidates = vec![candidate.clone()];
 
     if candidate.extension().is_none() {
         let base = candidate.to_string_lossy();
@@ -423,6 +425,13 @@ fn resolve_with_source_suffixes(candidate: &Path) -> Vec<PathBuf> {
 
 fn path_exists(path: &Path) -> bool {
     fs::metadata(path).is_ok()
+}
+
+fn is_package_install_path(path: &Path) -> bool {
+    path.components().any(|component| match component {
+        std::path::Component::Normal(segment) => segment == "node_modules",
+        _ => false,
+    })
 }
 
 fn merge_tree_shaking_warnings(warnings: Vec<TreeShakingWarning>) -> Vec<TreeShakingWarning> {

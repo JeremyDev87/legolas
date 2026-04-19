@@ -78,7 +78,7 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
 
     let analysis = scan_imports(&root, &files).expect("scan fixture imports");
 
-    assert_eq!(analysis.dynamic_import_count, 2);
+    assert_eq!(analysis.dynamic_import_count, 4);
     assert_eq!(
         analysis.by_package.keys().cloned().collect::<Vec<_>>(),
         vec![
@@ -253,6 +253,99 @@ fn scan_imports_excludes_jsconfig_backed_exact_aliases_from_package_usage() {
     assert!(!alias_aware.by_package.contains_key("env"));
     assert!(alias_aware.by_package.contains_key("react-icons"));
     assert_eq!(alias_aware.imported_packages.len(), 1);
+}
+
+#[test]
+fn scan_imports_keeps_node_modules_package_remaps_counted_as_packages() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "package-remap-app",
+  "private": true
+}"#,
+    );
+    write_file(
+        root,
+        "tsconfig.json",
+        r#"{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "react": ["node_modules/preact/compat"]
+    }
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "src/App.tsx",
+        "import { h } from \"react\";\nexport const App = h;\n",
+    );
+    write_file(
+        root,
+        "node_modules/preact/compat/index.js",
+        "export const h = () => null;\n",
+    );
+
+    let files = collect_source_files(root).expect("collect package-remap source files");
+    let alias_config = load_alias_config(root)
+        .expect("load package-remap alias config")
+        .expect("package-remap alias config should exist");
+    let alias_aware = scan_imports_with_aliases(root, &files, Some(&alias_config.config))
+        .expect("scan imports with alias config");
+
+    assert!(alias_aware.by_package.contains_key("react"));
+    assert_eq!(alias_aware.imported_packages.len(), 1);
+}
+
+#[test]
+fn scan_imports_counts_dynamic_entries_even_when_aliases_are_local() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "dynamic-alias-app",
+  "private": true
+}"#,
+    );
+    write_file(
+        root,
+        "tsconfig.json",
+        r#"{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "routes/*": ["src/routes/*"]
+    }
+  }
+}"#,
+    );
+    write_file(
+        root,
+        "src/App.tsx",
+        "export async function load() {\n  await import(\"routes/dashboard\");\n  await import(\"./local\");\n}\n",
+    );
+    write_file(
+        root,
+        "src/routes/dashboard.tsx",
+        "export default 'dashboard';\n",
+    );
+    write_file(root, "src/local.ts", "export default 'local';\n");
+
+    let files = collect_source_files(root).expect("collect dynamic-alias source files");
+    let alias_config = load_alias_config(root)
+        .expect("load dynamic-alias alias config")
+        .expect("dynamic-alias alias config should exist");
+    let alias_aware = scan_imports_with_aliases(root, &files, Some(&alias_config.config))
+        .expect("scan imports with alias config");
+
+    assert_eq!(alias_aware.imported_packages.len(), 0);
+    assert_eq!(alias_aware.dynamic_import_count, 2);
 }
 
 fn write_file(root: &Path, relative_path: &str, contents: &str) {
