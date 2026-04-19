@@ -72,18 +72,24 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
         to_posix_paths(&root, &files),
         vec![
             "basic/Dashboard.tsx",
+            "comments/Commented.tsx",
             "dynamic/Dashboard.tsx",
             "false-positives/docs.ts",
             "jsx/View.jsx",
+            "nested-dynamic/App.tsx",
+            "reexport/index.ts",
             "svelte/Panel.svelte",
+            "svelte-context/Panel.svelte",
+            "templates/Template.tsx",
             "type-only/types.ts",
             "vue/Widget.vue",
+            "vue-multiscript/Widget.vue",
         ]
     );
 
     let analysis = scan_imports(&root, &files).expect("scan fixture imports");
 
-    assert_eq!(analysis.dynamic_import_count, 4);
+    assert_eq!(analysis.dynamic_import_count, 6);
     assert_eq!(
         analysis.by_package.keys().cloned().collect::<Vec<_>>(),
         vec![
@@ -117,8 +123,16 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
         analysis.by_package.get("@scope/runtime"),
         Some(&ImportedPackageRecord {
             name: "@scope/runtime".to_string(),
-            files: vec!["type-only/types.ts".to_string()],
-            static_files: vec!["type-only/types.ts".to_string()],
+            files: vec![
+                "reexport/index.ts".to_string(),
+                "type-only/types.ts".to_string(),
+                "vue-multiscript/Widget.vue".to_string(),
+            ],
+            static_files: vec![
+                "reexport/index.ts".to_string(),
+                "type-only/types.ts".to_string(),
+                "vue-multiscript/Widget.vue".to_string(),
+            ],
             dynamic_files: Vec::new(),
         })
     );
@@ -128,22 +142,34 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
             name: "chart.js".to_string(),
             files: vec![
                 "basic/Dashboard.tsx".to_string(),
+                "nested-dynamic/App.tsx".to_string(),
+                "reexport/index.ts".to_string(),
                 "vue/Widget.vue".to_string()
             ],
             static_files: vec![
                 "basic/Dashboard.tsx".to_string(),
+                "reexport/index.ts".to_string(),
                 "vue/Widget.vue".to_string()
             ],
-            dynamic_files: vec!["vue/Widget.vue".to_string()],
+            dynamic_files: vec![
+                "nested-dynamic/App.tsx".to_string(),
+                "vue/Widget.vue".to_string()
+            ],
         })
     );
     assert_eq!(
         analysis.by_package.get("mapbox-gl"),
         Some(&ImportedPackageRecord {
             name: "mapbox-gl".to_string(),
-            files: vec!["dynamic/Dashboard.tsx".to_string()],
+            files: vec![
+                "dynamic/Dashboard.tsx".to_string(),
+                "nested-dynamic/App.tsx".to_string()
+            ],
             static_files: Vec::new(),
-            dynamic_files: vec!["dynamic/Dashboard.tsx".to_string()],
+            dynamic_files: vec![
+                "dynamic/Dashboard.tsx".to_string(),
+                "nested-dynamic/App.tsx".to_string()
+            ],
         })
     );
     assert_eq!(
