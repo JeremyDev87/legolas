@@ -158,6 +158,10 @@ fn matches_missing_number_and_unknown_flag_contracts() {
             vec!["--bogus".to_string()],
             "legolas: unknown flag \"--bogus\"\n",
         ),
+        (
+            vec!["scan".to_string(), "--config".to_string()],
+            "legolas: --config expects a path\n",
+        ),
     ];
 
     for (args, expected_stderr) in cases {

@@ -1,0 +1,11 @@
+{
+  "scan": {
+    "path": "../../parity/basic-app"
+  },
+  "visualize": {
+    "limit": 2
+  },
+  "optimize": {
+    "top": 2
+  }
+}
