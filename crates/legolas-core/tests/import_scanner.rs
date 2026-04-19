@@ -15,7 +15,7 @@ use legolas_core::{
         collect_source_files, scan_imports, scan_imports_with_aliases, ImportedPackageRecord,
     },
     workspace::load_alias_config,
-    FindingAnalysisSource, FindingEvidence, FindingMetadata, TreeShakingWarning,
+    FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata, TreeShakingWarning,
 };
 use tempfile::tempdir;
 
@@ -181,6 +181,7 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
                     "tree-shaking:lodash-root-import",
                     FindingAnalysisSource::SourceImport,
                 )
+                .with_confidence(FindingConfidence::High)
                 .with_evidence([FindingEvidence::new("source-file")
                     .with_file("basic/Dashboard.tsx")
                     .with_specifier("lodash")
@@ -200,6 +201,7 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
                     "tree-shaking:react-icons-root-import",
                     FindingAnalysisSource::SourceImport,
                 )
+                .with_confidence(FindingConfidence::High)
                 .with_evidence([
                     FindingEvidence::new("source-file")
                         .with_file("basic/Dashboard.tsx")
@@ -224,6 +226,7 @@ fn scan_imports_matches_manual_scanner_parity_expectations() {
                     "tree-shaking:namespace-ui-import",
                     FindingAnalysisSource::SourceImport,
                 )
+                .with_confidence(FindingConfidence::High)
                 .with_evidence([FindingEvidence::new("source-file")
                     .with_file("jsx/View.jsx")
                     .with_specifier("lucide-react")

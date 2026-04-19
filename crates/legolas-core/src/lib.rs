@@ -2,6 +2,7 @@ pub mod aliases;
 pub mod analyze;
 pub mod artifacts;
 pub mod budget;
+pub mod confidence;
 pub mod config;
 pub mod error;
 pub mod findings;
@@ -14,6 +15,7 @@ pub mod project_shape;
 pub mod workspace;
 
 pub use analyze::analyze_project;
+pub use confidence::*;
 pub use error::{LegolasError, Result};
 pub use findings::*;
 pub use models::*;

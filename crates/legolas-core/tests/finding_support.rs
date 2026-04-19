@@ -1,6 +1,6 @@
 use legolas_core::{
-    DuplicatePackage, FindingAnalysisSource, FindingEvidence, FindingMetadata, HeavyDependency,
-    LazyLoadCandidate, TreeShakingWarning,
+    DuplicatePackage, FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata,
+    HeavyDependency, LazyLoadCandidate, TreeShakingWarning,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
@@ -18,6 +18,7 @@ fn finding_metadata_serializes_as_flat_camel_case_fields() {
         dynamic_imported_by: Vec::new(),
         import_count: 1,
         finding: FindingMetadata::new("heavy-dependency", FindingAnalysisSource::SourceImport)
+            .with_confidence(FindingConfidence::High)
             .with_evidence([FindingEvidence::new("source-file")
                 .with_file("src/App.tsx")
                 .with_specifier("lodash")
@@ -27,6 +28,7 @@ fn finding_metadata_serializes_as_flat_camel_case_fields() {
 
     assert_eq!(payload["findingId"], json!("heavy-dependency"));
     assert_eq!(payload["analysisSource"], json!("source-import"));
+    assert_eq!(payload["confidence"], json!("high"));
     assert_eq!(
         payload["evidence"],
         json!([{
@@ -99,5 +101,6 @@ where
     let serialized = serde_json::to_value(&item).expect("serialize with default finding");
     assert!(serialized.get("findingId").is_none());
     assert!(serialized.get("analysisSource").is_none());
+    assert!(serialized.get("confidence").is_none());
     assert!(serialized.get("evidence").is_none());
 }

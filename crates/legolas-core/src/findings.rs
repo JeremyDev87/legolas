@@ -8,6 +8,14 @@ pub enum FindingAnalysisSource {
     LockfileTrace,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FindingConfidence {
+    Low,
+    Medium,
+    High,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FindingEvidence {
@@ -51,6 +59,8 @@ pub struct FindingMetadata {
     pub finding_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub analysis_source: Option<FindingAnalysisSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<FindingConfidence>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<FindingEvidence>,
 }
@@ -60,8 +70,14 @@ impl FindingMetadata {
         Self {
             finding_id: Some(finding_id.into()),
             analysis_source: Some(analysis_source),
+            confidence: None,
             evidence: Vec::new(),
         }
+    }
+
+    pub fn with_confidence(mut self, confidence: FindingConfidence) -> Self {
+        self.confidence = Some(confidence);
+        self
     }
 
     pub fn with_evidence<I>(mut self, evidence: I) -> Self
@@ -77,6 +93,9 @@ impl FindingMetadata {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.finding_id.is_none() && self.analysis_source.is_none() && self.evidence.is_empty()
+        self.finding_id.is_none()
+            && self.analysis_source.is_none()
+            && self.confidence.is_none()
+            && self.evidence.is_empty()
     }
 }

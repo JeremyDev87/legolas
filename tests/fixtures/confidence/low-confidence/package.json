@@ -1,0 +1,6 @@
+{
+  "name": "low-confidence-app",
+  "dependencies": {
+    "chart.js": "^4.4.1"
+  }
+}
