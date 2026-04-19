@@ -1,4 +1,4 @@
-use legolas_core::Analysis;
+use legolas_core::{budget::BudgetEvaluation, Analysis};
 
 pub fn format_scan_report(analysis: &Analysis) -> String {
     let mut lines = Vec::new();
@@ -191,6 +191,33 @@ pub fn format_optimize_report(analysis: &Analysis, top: usize) -> String {
         "Projected savings: ~{} KB, with {} confidence.",
         analysis.impact.potential_kb_saved, analysis.impact.confidence
     ));
+
+    lines.join("\n")
+}
+
+pub fn format_budget_report(analysis: &Analysis, evaluation: &BudgetEvaluation) -> String {
+    let mut lines = Vec::new();
+
+    lines.push(format!(
+        "Legolas budget for {}",
+        analysis.package_summary.name
+    ));
+    append_warnings(&mut lines, &analysis.warnings);
+    lines.push(String::new());
+    lines.push(format!("Overall status: {:?}", evaluation.overall_status));
+    lines.push(String::new());
+    lines.push("Rule results:".to_string());
+    append_section(
+        &mut lines,
+        &evaluation.rules,
+        |item, _| {
+            format!(
+                "- {}: {:?} (actual: {}, warnAt: {}, failAt: {})",
+                item.key, item.status, item.actual, item.warn_at, item.fail_at
+            )
+        },
+        "- none",
+    );
 
     lines.join("\n")
 }

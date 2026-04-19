@@ -7,6 +7,7 @@ pub enum Command {
     Scan,
     Visualize,
     Optimize,
+    Budget,
     Help,
     Unknown(String),
 }
@@ -23,6 +24,13 @@ pub struct CliArgs {
     pub version: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PendingNumericValue {
+    MissingOrFlag,
+    MissingOrFlagBeforeCommand,
+    Raw(String),
+}
+
 pub fn parse_argv<I, S>(args: I) -> Result<CliArgs>
 where
     I: IntoIterator<Item = S>,
@@ -30,6 +38,8 @@ where
 {
     let tokens = args.into_iter().map(Into::into).collect::<Vec<_>>();
     let mut parsed = CliArgs::default();
+    let mut pending_limit = None;
+    let mut pending_top = None;
     let mut index = 0;
 
     while index < tokens.len() {
@@ -72,31 +82,28 @@ where
                 index += 1;
             }
             "--limit" | "--top" => {
-                let next = tokens
-                    .get(index + 1)
-                    .ok_or_else(|| LegolasError::CliUsage(format!("{token} expects a number")))?;
-
-                if next.starts_with('-') {
-                    return Err(LegolasError::CliUsage(format!("{token} expects a number")));
-                }
-
-                let parsed_value = next.parse::<usize>().map_err(|_| {
-                    LegolasError::CliUsage(format!("{token} expects a positive integer"))
-                })?;
-
-                if parsed_value < 1 {
-                    return Err(LegolasError::CliUsage(format!(
-                        "{token} expects a positive integer"
-                    )));
-                }
+                let command_known = parsed.command.is_some();
+                let pending_value = match tokens.get(index + 1) {
+                    Some(next) if !next.starts_with('-') => {
+                        index += 1;
+                        PendingNumericValue::Raw(next.clone())
+                    }
+                    Some(next) if command_known && looks_like_signed_integer_token(next) => {
+                        index += 1;
+                        PendingNumericValue::Raw(next.clone())
+                    }
+                    Some(next) if !command_known && next.starts_with('-') => {
+                        index += 1;
+                        PendingNumericValue::MissingOrFlagBeforeCommand
+                    }
+                    _ => PendingNumericValue::MissingOrFlag,
+                };
 
                 match token.as_str() {
-                    "--limit" => parsed.limit = Some(parsed_value),
-                    "--top" => parsed.top = Some(parsed_value),
-                    _ => {}
+                    "--limit" => pending_limit = Some(pending_value),
+                    "--top" => pending_top = Some(pending_value),
+                    _ => unreachable!("validated numeric flag"),
                 }
-
-                index += 1;
             }
             _ => {
                 return Err(LegolasError::CliUsage(format!("unknown flag \"{token}\"")));
@@ -106,6 +113,9 @@ where
         index += 1;
     }
 
+    parsed.limit = finalize_numeric_flag(parsed.command.as_ref(), pending_limit, "--limit")?;
+    parsed.top = finalize_numeric_flag(parsed.command.as_ref(), pending_top, "--top")?;
+
     Ok(parsed)
 }
 
@@ -114,6 +124,7 @@ fn parse_command(token: &str) -> Command {
         "scan" => Command::Scan,
         "visualize" => Command::Visualize,
         "optimize" => Command::Optimize,
+        "budget" => Command::Budget,
         "help" => Command::Help,
         other => Command::Unknown(other.to_string()),
     }
@@ -126,4 +137,43 @@ fn resolve_path_token(token: &str) -> Result<PathBuf> {
     }
 
     Ok(std::env::current_dir()?.join(path))
+}
+
+fn finalize_numeric_flag(
+    command: Option<&Command>,
+    pending_value: Option<PendingNumericValue>,
+    token: &str,
+) -> Result<Option<usize>> {
+    let Some(pending_value) = pending_value else {
+        return Ok(None);
+    };
+
+    if matches!(command, Some(Command::Budget)) {
+        return Err(LegolasError::CliUsage(format!("unknown flag \"{token}\"")));
+    }
+
+    match pending_value {
+        PendingNumericValue::MissingOrFlag | PendingNumericValue::MissingOrFlagBeforeCommand => {
+            Err(LegolasError::CliUsage(format!("{token} expects a number")))
+        }
+        PendingNumericValue::Raw(raw) => {
+            let parsed_value = raw.parse::<usize>().map_err(|_| {
+                LegolasError::CliUsage(format!("{token} expects a positive integer"))
+            })?;
+
+            if parsed_value < 1 {
+                return Err(LegolasError::CliUsage(format!(
+                    "{token} expects a positive integer"
+                )));
+            }
+
+            Ok(Some(parsed_value))
+        }
+    }
+}
+
+fn looks_like_signed_integer_token(token: &str) -> bool {
+    token
+        .strip_prefix('-')
+        .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_digit()))
 }
