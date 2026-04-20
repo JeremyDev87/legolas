@@ -92,9 +92,9 @@ static PACKAGE_INTELLIGENCE: [(&str, PackageIntel); 16] = [
         PackageIntel {
             estimated_kb: 220,
             category: "icons",
-            rationale: "Icons often spread across the app and are easy to over-import.",
+            rationale: "Pack-wide icon imports can spread quickly and keep too many symbols in the graph.",
             recommendation:
-                "Use direct icon imports and lazy load icon-heavy admin or settings routes.",
+                "Prefer direct icon imports such as @mui/icons-material/Add on icon-heavy surfaces.",
         },
     ),
     (

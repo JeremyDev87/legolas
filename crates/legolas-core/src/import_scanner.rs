@@ -908,6 +908,10 @@ fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingW
         return None;
     }
 
+    if let Some(warning) = icon_tree_shaking_hint(specifier, &normalized_clause) {
+        return Some(warning);
+    }
+
     if is_namespace_import_clause(&normalized_clause) && is_namespace_sensitive_package(specifier) {
         return Some(TreeShakingWarning {
             key: "namespace-ui-import".to_string(),
@@ -925,6 +929,10 @@ fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingW
         return Some(warning);
     }
 
+    None
+}
+
+fn icon_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingWarning> {
     if specifier == "react-icons" {
         return Some(TreeShakingWarning {
             key: "react-icons-root-import".to_string(),
@@ -937,7 +945,29 @@ fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingW
         });
     }
 
-    None
+    if !is_namespace_import_clause(clause) {
+        return None;
+    }
+
+    let key = if specifier == "@mui/icons-material" {
+        "mui-icons-namespace-import"
+    } else if specifier.starts_with("react-icons/") {
+        "react-icons-pack-namespace-import"
+    } else {
+        return None;
+    };
+
+    Some(TreeShakingWarning {
+        key: key.to_string(),
+        package_name: specifier.to_string(),
+        message: "Namespace icon-pack imports can pull large icon sets into a single module graph."
+            .to_string(),
+        recommendation: "Import only the icon symbols you use instead of a namespace icon pack."
+            .to_string(),
+        estimated_kb: 32,
+        files: Vec::new(),
+        finding: Default::default(),
+    })
 }
 
 fn root_barrel_tree_shaking_hint(specifier: &str) -> Option<TreeShakingWarning> {
@@ -977,15 +1007,27 @@ fn build_tree_shaking_finding(
     }
 
     FindingMetadata::new(
-        format!("tree-shaking:{warning_key}"),
+        tree_shaking_finding_id(warning_key, package_name),
         FindingAnalysisSource::SourceImport,
     )
     .with_confidence(score_tree_shaking_warning())
     .with_evidence([evidence])
 }
 
+fn tree_shaking_finding_id(warning_key: &str, package_name: &str) -> String {
+    match warning_key {
+        "mui-icons-namespace-import" | "react-icons-pack-namespace-import" => {
+            format!("tree-shaking:{warning_key}:{package_name}")
+        }
+        _ => format!("tree-shaking:{warning_key}"),
+    }
+}
+
 fn tree_shaking_evidence_detail(warning_key: &str) -> Option<&'static str> {
     match warning_key {
+        "mui-icons-namespace-import" | "react-icons-pack-namespace-import" => {
+            Some("icon pack namespace import")
+        }
         "namespace-ui-import" => Some("namespace import"),
         "lodash-root-import" | "react-icons-root-import" => Some("root package import"),
         _ => None,
@@ -1020,7 +1062,7 @@ fn is_type_only_clause(clause: &str) -> bool {
 }
 
 fn is_namespace_sensitive_package(specifier: &str) -> bool {
-    matches!(specifier, "lodash" | "lucide-react" | "@mui/icons-material")
+    matches!(specifier, "lodash" | "lucide-react")
 }
 
 fn is_namespace_import_clause(clause: &str) -> bool {
