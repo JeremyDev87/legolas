@@ -1,0 +1,9 @@
+{
+  "name": "locale-import-precision",
+  "private": true,
+  "dependencies": {
+    "date-fns": "3.6.0",
+    "dayjs": "1.11.11",
+    "moment": "2.30.1"
+  }
+}
