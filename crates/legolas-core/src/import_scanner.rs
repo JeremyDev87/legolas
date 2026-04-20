@@ -128,6 +128,12 @@ struct WarningAccumulator {
     finding: FindingMetadata,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct LocaleImportAccumulator {
+    specifiers: BTreeSet<String>,
+    files: BTreeSet<String>,
+}
+
 pub fn collect_source_files<P: AsRef<Path>>(project_root: P) -> Result<Vec<PathBuf>> {
     let project_root = project_root.as_ref();
     ensure_directory_exists(project_root)?;
@@ -158,6 +164,7 @@ pub fn scan_imports_with_aliases<P: AsRef<Path>>(
 
     let mut by_package: BTreeMap<String, PackageAccumulator> = BTreeMap::new();
     let mut tree_shaking_observations = Vec::new();
+    let mut static_locale_imports = BTreeMap::<String, LocaleImportAccumulator>::new();
     let mut dynamic_import_count = 0;
 
     for absolute_path in ordered_files {
@@ -189,6 +196,11 @@ pub fn scan_imports_with_aliases<P: AsRef<Path>>(
                 record.dynamic_files.insert(relative_path.clone());
             } else {
                 record.static_files.insert(relative_path.clone());
+                if let Some(package_name) = locale_subpath_package(&entry.specifier) {
+                    let accumulator = static_locale_imports.entry(package_name).or_default();
+                    accumulator.specifiers.insert(entry.specifier.clone());
+                    accumulator.files.insert(relative_path.clone());
+                }
             }
         }
 
@@ -199,6 +211,8 @@ pub fn scan_imports_with_aliases<P: AsRef<Path>>(
             tree_shaking_observations.push(hint);
         }
     }
+
+    tree_shaking_observations.extend(locale_tree_shaking_hints(static_locale_imports));
 
     let by_package = by_package
         .into_iter()
@@ -993,6 +1007,46 @@ fn root_barrel_tree_shaking_hint(specifier: &str) -> Option<TreeShakingWarning> 
     })
 }
 
+fn locale_subpath_package(specifier: &str) -> Option<String> {
+    for package_name in ["moment", "dayjs", "date-fns"] {
+        let locale_prefix = format!("{package_name}/locale/");
+        if specifier.starts_with(&locale_prefix) && specifier.len() > locale_prefix.len() {
+            return Some(package_name.to_string());
+        }
+    }
+
+    None
+}
+
+fn locale_tree_shaking_hints(
+    locale_imports: BTreeMap<String, LocaleImportAccumulator>,
+) -> Vec<TreeShakingWarning> {
+    let mut hints = Vec::new();
+
+    for (package_name, accumulator) in locale_imports {
+        if accumulator.specifiers.len() < 2 {
+            continue;
+        }
+
+        for file in accumulator.files {
+            hints.push(TreeShakingWarning {
+                key: "import.locale-bundle".to_string(),
+                package_name: package_name.clone(),
+                message: "Multiple static locale imports can pull locale data into the main module graph."
+                    .to_string(),
+                recommendation:
+                    "Load only the active locale or split locale data away from the initial bundle."
+                        .to_string(),
+                estimated_kb: 18,
+                files: vec![file.clone()],
+                finding: build_tree_shaking_finding("import.locale-bundle", &package_name, &file),
+            });
+        }
+    }
+
+    hints
+}
+
 fn build_tree_shaking_finding(
     warning_key: &str,
     package_name: &str,
@@ -1016,7 +1070,9 @@ fn build_tree_shaking_finding(
 
 fn tree_shaking_finding_id(warning_key: &str, package_name: &str) -> String {
     match warning_key {
-        "mui-icons-namespace-import" | "react-icons-pack-namespace-import" => {
+        "import.locale-bundle"
+        | "mui-icons-namespace-import"
+        | "react-icons-pack-namespace-import" => {
             format!("tree-shaking:{warning_key}:{package_name}")
         }
         _ => format!("tree-shaking:{warning_key}"),
@@ -1029,6 +1085,7 @@ fn tree_shaking_evidence_detail(warning_key: &str) -> Option<&'static str> {
             Some("icon pack namespace import")
         }
         "namespace-ui-import" => Some("namespace import"),
+        "import.locale-bundle" => Some("static locale import bundle"),
         "lodash-root-import" | "react-icons-root-import" => Some("root package import"),
         _ => None,
     }
