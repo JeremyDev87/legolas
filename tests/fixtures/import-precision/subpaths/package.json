@@ -1,0 +1,9 @@
+{
+  "name": "import-precision-subpaths",
+  "private": true,
+  "dependencies": {
+    "@mui/material": "5.15.0",
+    "date-fns": "3.6.0",
+    "lodash": "4.17.21"
+  }
+}
