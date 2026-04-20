@@ -4,9 +4,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use once_cell::sync::Lazy;
-use regex::Regex;
-
 use crate::{
     aliases::{AliasConfig, AliasTarget},
     confidence::score_tree_shaking_warning,
@@ -33,9 +30,6 @@ const SOURCE_FILE_SUFFIXES: &[&str] = &[
     ".js", ".jsx", ".ts", ".tsx", ".cjs", ".cjsx", ".cts", ".ctsx", ".mjs", ".mjsx", ".mts",
     ".mtsx", ".vue", ".svelte",
 ];
-
-static SCRIPT_BLOCK_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?is)<script\b[^>]*>(.*?)</script>").expect("valid script regex"));
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ImportedPackageRecord {
@@ -286,6 +280,13 @@ fn scan_source_file(contents: &str, jsx_text_guard: bool) -> ScannedSourceFile {
             continue;
         }
 
+        if character == '/' && is_regex_literal_start(contents, index) {
+            if let Some(next_index) = skip_regex_literal(contents, index) {
+                index = next_index;
+                continue;
+            }
+        }
+
         if character == '`' {
             let parsed_template = scan_template_string(contents, index, jsx_text_guard);
             imports.extend(parsed_template.imports);
@@ -323,6 +324,9 @@ fn scan_source_file(contents: &str, jsx_text_guard: bool) -> ScannedSourceFile {
             if let Some(parsed) = try_parse_export_from(contents, index) {
                 if let Some(import_entry) = parsed.import_entry {
                     imports.push(import_entry);
+                }
+                if let Some(tree_shaking_hint) = parsed.tree_shaking_hint {
+                    tree_shaking_hints.push(tree_shaking_hint);
                 }
                 index = parsed.next_index;
                 continue;
@@ -386,7 +390,16 @@ fn scan_template_string(
         if character == '$' && peek_char(contents, index + 1) == Some('{') {
             let expression_start = index + 2;
             let expression_end = skip_balanced_expression(contents, expression_start);
-            let closing_index = expression_end.saturating_sub(1);
+            let Some(closing_index) = expression_end
+                .checked_sub(1)
+                .filter(|_| previous_char(contents, expression_end) == Some('}'))
+            else {
+                return ParsedTemplateString {
+                    imports,
+                    tree_shaking_hints,
+                    next_index: contents.len(),
+                };
+            };
 
             if closing_index >= expression_start {
                 let nested =
@@ -627,11 +640,145 @@ fn get_scannable_contents(file_path: &Path, contents: &str) -> String {
 }
 
 fn extract_script_blocks(contents: &str) -> String {
-    SCRIPT_BLOCK_PATTERN
-        .captures_iter(contents)
-        .filter_map(|captures| captures.get(1).map(|value| value.as_str()))
-        .collect::<Vec<_>>()
-        .join("\n")
+    let mut blocks = Vec::new();
+    let mut search_index = 0;
+
+    while let Some((body_start, body_end, next_index)) =
+        find_next_script_block(contents, search_index)
+    {
+        blocks.push(contents[body_start..body_end].to_string());
+        search_index = next_index;
+    }
+
+    blocks.join("\n")
+}
+
+fn find_next_script_block(contents: &str, start_index: usize) -> Option<(usize, usize, usize)> {
+    let mut index = start_index;
+
+    while index < contents.len() {
+        if let Some(open_tag_end) = script_open_tag_end(contents, index) {
+            let body_end = find_script_block_end(contents, open_tag_end)?;
+            let close_tag_end = script_close_tag_end(contents, body_end)?;
+            return Some((open_tag_end, body_end, close_tag_end));
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    None
+}
+
+fn script_open_tag_end(contents: &str, start_index: usize) -> Option<usize> {
+    if current_char(contents, start_index) != Some('<')
+        || !starts_with_ascii_case_insensitive(contents, start_index, "<script")
+    {
+        return None;
+    }
+
+    let boundary_index = start_index + "<script".len();
+    let boundary_character = current_char(contents, boundary_index)?;
+    if !boundary_character.is_whitespace() && !matches!(boundary_character, '>' | '/') {
+        return None;
+    }
+
+    find_html_tag_end(contents, boundary_index).map(|tag_end| advance_one(contents, tag_end))
+}
+
+fn script_close_tag_end(contents: &str, start_index: usize) -> Option<usize> {
+    if current_char(contents, start_index) != Some('<')
+        || !starts_with_ascii_case_insensitive(contents, start_index, "</script")
+    {
+        return None;
+    }
+
+    let boundary_index = start_index + "</script".len();
+    let mut index = boundary_index;
+    while matches!(current_char(contents, index), Some(character) if character.is_whitespace()) {
+        index = advance_one(contents, index);
+    }
+
+    (current_char(contents, index) == Some('>')).then(|| advance_one(contents, index))
+}
+
+fn find_html_tag_end(contents: &str, start_index: usize) -> Option<usize> {
+    let mut index = start_index;
+    let mut quoted_by = None;
+
+    while index < contents.len() {
+        let character = current_char(contents, index)?;
+
+        if let Some(quote) = quoted_by {
+            if character == quote {
+                quoted_by = None;
+            }
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        if matches!(character, '"' | '\'') {
+            quoted_by = Some(character);
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        if character == '>' {
+            return Some(index);
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    None
+}
+
+fn find_script_block_end(contents: &str, start_index: usize) -> Option<usize> {
+    let mut index = start_index;
+
+    while index < contents.len() {
+        let character = current_char(contents, index)?;
+
+        if script_close_tag_end(contents, index).is_some() {
+            return Some(index);
+        }
+
+        if character == '/' && peek_char(contents, index + 1) == Some('/') {
+            index = skip_line_comment(contents, index);
+            continue;
+        }
+
+        if character == '/' && peek_char(contents, index + 1) == Some('*') {
+            index = skip_block_comment(contents, index);
+            continue;
+        }
+
+        if matches!(character, '"' | '\'') {
+            index = skip_quoted_string(contents, index, character);
+            continue;
+        }
+
+        if character == '/' && is_regex_literal_start(contents, index) {
+            if let Some(next_index) = skip_regex_literal(contents, index) {
+                index = next_index;
+                continue;
+            }
+        }
+
+        if character == '`' {
+            index = skip_template_string(contents, index);
+            continue;
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    None
+}
+
+fn starts_with_ascii_case_insensitive(contents: &str, start_index: usize, pattern: &str) -> bool {
+    contents
+        .get(start_index..start_index + pattern.len())
+        .is_some_and(|slice| slice.eq_ignore_ascii_case(pattern))
 }
 
 fn supports_jsx_text_guard(file_path: &Path) -> bool {
@@ -722,12 +869,15 @@ fn try_parse_export_from(contents: &str, start_index: usize) -> Option<ParsedTok
         });
     }
 
+    let specifier = parsed_specifier.value;
+    let tree_shaking_hint = build_tree_shaking_hint(&specifier, clause);
+
     Some(ParsedToken {
         import_entry: Some(ImportEntry {
             kind: ImportKind::Static,
-            specifier: parsed_specifier.value,
+            specifier,
         }),
-        tree_shaking_hint: None,
+        tree_shaking_hint,
         next_index: parsed_specifier.next_index,
     })
 }
@@ -1116,8 +1266,10 @@ fn skip_balanced_expression(contents: &str, start_index: usize) -> usize {
         }
 
         if character == '/' && is_regex_literal_start(contents, index) {
-            index = skip_regex_literal(contents, index);
-            continue;
+            if let Some(next_index) = skip_regex_literal(contents, index) {
+                index = next_index;
+                continue;
+            }
         }
 
         if character == '`' {
@@ -1145,17 +1297,23 @@ fn skip_balanced_expression(contents: &str, start_index: usize) -> usize {
 
 fn is_regex_literal_start(contents: &str, start_index: usize) -> bool {
     if peek_char(contents, start_index + 1).is_none()
-        || matches!(peek_char(contents, start_index + 1), Some('/' | '*' | '='))
+        || matches!(peek_char(contents, start_index + 1), Some('/' | '*'))
     {
         return false;
     }
 
-    let Some(previous_index) = find_previous_non_whitespace(contents, start_index) else {
+    let Some(previous_index) = find_previous_significant_index(contents, start_index) else {
         return true;
     };
     let Some(previous_character) = current_char(contents, previous_index) else {
         return true;
     };
+
+    if matches!(previous_character, '+' | '-')
+        && previous_char(contents, previous_index) == Some(previous_character)
+    {
+        return false;
+    }
 
     if matches!(
         previous_character,
@@ -1187,7 +1345,10 @@ fn is_regex_literal_start(contents: &str, start_index: usize) -> bool {
                 token,
                 "await"
                     | "case"
+                    | "do"
                     | "delete"
+                    | "else"
+                    | "of"
                     | "in"
                     | "instanceof"
                     | "new"
@@ -1200,14 +1361,302 @@ fn is_regex_literal_start(contents: &str, start_index: usize) -> bool {
         });
     }
 
-    if matches!(previous_character, ')' | ']' | '}' | '\'' | '"' | '`' | '.') {
+    if previous_character == ')' {
+        return regex_can_follow_parenthesized_construct(contents, previous_index);
+    }
+
+    if previous_character == '}' {
+        return regex_can_follow_braced_construct(contents, previous_index, start_index);
+    }
+
+    if matches!(previous_character, ']' | '\'' | '"' | '`' | '.') {
         return false;
     }
 
     false
 }
 
-fn skip_regex_literal(contents: &str, start_index: usize) -> usize {
+fn regex_can_follow_parenthesized_construct(contents: &str, close_index: usize) -> bool {
+    let Some(open_index) = find_matching_open_delimiter(contents, close_index, '(', ')') else {
+        return false;
+    };
+    let head = normalize_whitespace(statement_head_segment(contents, open_index));
+
+    head_ends_with_tokens(&head, &["if"])
+        || head_ends_with_tokens(&head, &["while"])
+        || head_ends_with_tokens(&head, &["for"])
+        || head_ends_with_tokens(&head, &["for", "await"])
+        || head_ends_with_tokens(&head, &["with"])
+        || head_ends_with_tokens(&head, &["switch"])
+        || head_ends_with_tokens(&head, &["catch"])
+}
+
+fn regex_can_follow_braced_construct(
+    contents: &str,
+    close_index: usize,
+    regex_start_index: usize,
+) -> bool {
+    let Some(open_index) = find_matching_open_delimiter(contents, close_index, '{', '}') else {
+        return false;
+    };
+    let Some(before_open_index) = find_previous_non_whitespace(contents, open_index) else {
+        return true;
+    };
+    let Some(before_open_character) = current_char(contents, before_open_index) else {
+        return true;
+    };
+    let head = normalize_whitespace(statement_head_segment(contents, open_index));
+    let follows_line_break = has_line_terminator_between(contents, close_index, regex_start_index);
+
+    if matches!(
+        before_open_character,
+        '=' | '(' | '[' | ',' | ':' | '?' | '.'
+    ) {
+        if before_open_character == ':' {
+            return follows_line_break && is_labeled_statement_head(&head);
+        }
+
+        return false;
+    }
+
+    if before_open_character == ')' {
+        return regex_can_follow_parenthesized_construct(contents, before_open_index)
+            || is_function_declaration_head(&head);
+    }
+
+    if before_open_character == '>' {
+        return follows_line_break && is_arrow_function_statement_head(&head);
+    }
+
+    if is_identifier_character(before_open_character) {
+        if head_ends_with_tokens(&head, &["catch"])
+            || head_ends_with_tokens(&head, &["else"])
+            || head_ends_with_tokens(&head, &["finally"])
+        {
+            return true;
+        }
+
+        return is_class_declaration_head(&head);
+    }
+
+    matches!(before_open_character, ';' | '{' | '}')
+}
+
+fn has_line_terminator_between(contents: &str, start_index: usize, end_index: usize) -> bool {
+    let mut index = start_index;
+
+    while index < end_index {
+        let Some(character) = current_char(contents, index) else {
+            break;
+        };
+
+        if matches!(character, '\n' | '\r') {
+            return true;
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    false
+}
+
+fn is_labeled_statement_head(head: &str) -> bool {
+    let Some(label) = head.strip_suffix(':') else {
+        return false;
+    };
+    let label = label.trim();
+    let mut characters = label.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+
+    is_identifier_start(first) && characters.all(is_identifier_character)
+}
+
+fn is_arrow_function_statement_head(head: &str) -> bool {
+    head.contains("=>") && contains_assignment_operator(head)
+}
+
+fn is_function_declaration_head(head: &str) -> bool {
+    let mut tokens = head.split_whitespace().peekable();
+    while matches!(
+        tokens.peek().copied(),
+        Some("export" | "default" | "async" | "declare" | "abstract")
+    ) {
+        tokens.next();
+    }
+
+    let Some(token) = tokens.next() else {
+        return false;
+    };
+
+    if token == "function*" {
+        return true;
+    }
+
+    if token != "function" {
+        return false;
+    }
+
+    if matches!(tokens.peek().copied(), Some("*")) {
+        tokens.next();
+    }
+
+    true
+}
+
+fn is_class_declaration_head(head: &str) -> bool {
+    let mut tokens = head.split_whitespace();
+    loop {
+        let Some(token) = tokens.next() else {
+            return false;
+        };
+        if matches!(token, "export" | "default" | "declare" | "abstract") {
+            continue;
+        }
+        return token == "class";
+    }
+}
+
+fn statement_head_segment(contents: &str, end_index: usize) -> &str {
+    let start_index = find_statement_head_start(contents, end_index);
+    contents[start_index..end_index].trim()
+}
+
+fn find_statement_head_start(contents: &str, end_index: usize) -> usize {
+    let mut last_boundary = 0;
+    let mut stack = Vec::<char>::new();
+    let mut index = 0;
+
+    while index < end_index {
+        let Some(character) = current_char(contents, index) else {
+            break;
+        };
+
+        if character == '/' && peek_char(contents, index + 1) == Some('/') {
+            index = skip_line_comment(contents, index);
+            continue;
+        }
+
+        if character == '/' && peek_char(contents, index + 1) == Some('*') {
+            index = skip_block_comment(contents, index);
+            continue;
+        }
+
+        if character == '\'' || character == '"' {
+            index = skip_quoted_string(contents, index, character);
+            continue;
+        }
+
+        if character == '/' && is_regex_literal_start(contents, index) {
+            if let Some(next_index) = skip_regex_literal(contents, index) {
+                index = next_index;
+                continue;
+            }
+        }
+
+        if character == '`' {
+            index = skip_template_string(contents, index);
+            continue;
+        }
+
+        if matches!(character, '{' | '(' | '[') {
+            stack.push(character);
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        if matches!(character, '}' | ')' | ']') {
+            stack.pop();
+            if stack.is_empty() && character == '}' {
+                last_boundary = advance_one(contents, index);
+            }
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        if stack.is_empty() && matches!(character, ';' | '{' | '}' | '\n' | '\r') {
+            last_boundary = advance_one(contents, index);
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    last_boundary
+}
+
+fn find_matching_open_delimiter(
+    contents: &str,
+    close_index: usize,
+    open_character: char,
+    close_character: char,
+) -> Option<usize> {
+    let mut stack = Vec::<(char, usize)>::new();
+    let mut index = 0;
+
+    while index <= close_index {
+        let character = current_char(contents, index)?;
+
+        if character == '/' && peek_char(contents, index + 1) == Some('/') {
+            index = skip_line_comment(contents, index);
+            continue;
+        }
+
+        if character == '/' && peek_char(contents, index + 1) == Some('*') {
+            index = skip_block_comment(contents, index);
+            continue;
+        }
+
+        if character == '\'' || character == '"' {
+            index = skip_quoted_string(contents, index, character);
+            continue;
+        }
+
+        if character == '/' && is_regex_literal_start(contents, index) {
+            if let Some(next_index) = skip_regex_literal(contents, index) {
+                index = next_index;
+                continue;
+            }
+        }
+
+        if character == '`' {
+            index = skip_template_string(contents, index);
+            continue;
+        }
+
+        if matches!(character, '{' | '(' | '[') {
+            stack.push((character, index));
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        if matches!(character, '}' | ')' | ']') {
+            let (expected_open, expected_close) = match character {
+                '}' => ('{', '}'),
+                ')' => ('(', ')'),
+                _ => ('[', ']'),
+            };
+            let (actual_open, open_index) = stack.pop()?;
+            if actual_open != expected_open {
+                return None;
+            }
+            if index == close_index
+                && actual_open == open_character
+                && expected_close == close_character
+            {
+                return Some(open_index);
+            }
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    None
+}
+
+fn skip_regex_literal(contents: &str, start_index: usize) -> Option<usize> {
     let mut index = advance_one(contents, start_index);
     let mut in_character_class = false;
 
@@ -1219,7 +1668,7 @@ fn skip_regex_literal(contents: &str, start_index: usize) -> usize {
         if character == '\\' {
             let next_index = advance_one(contents, index);
             if next_index >= contents.len() {
-                return contents.len();
+                return None;
             }
             index = advance_one(contents, next_index);
             continue;
@@ -1239,21 +1688,32 @@ fn skip_regex_literal(contents: &str, start_index: usize) -> usize {
 
         if character == '/' && !in_character_class {
             index = advance_one(contents, index);
+            let mut seen_flags = Vec::new();
             while matches!(current_char(contents, index), Some(flag) if is_identifier_character(flag))
             {
+                let Some(flag) = current_char(contents, index) else {
+                    break;
+                };
+                if !is_regex_flag(flag) || seen_flags.contains(&flag) {
+                    return None;
+                }
+                seen_flags.push(flag);
                 index = advance_one(contents, index);
             }
-            return index;
+            if !regex_literal_has_valid_follow(contents, index) {
+                return None;
+            }
+            return Some(index);
         }
 
         if character == '\n' || character == '\r' {
-            return index;
+            return None;
         }
 
         index = advance_one(contents, index);
     }
 
-    index
+    None
 }
 
 fn get_closing_character(open_character: char) -> char {
@@ -1262,6 +1722,69 @@ fn get_closing_character(open_character: char) -> char {
         '(' => ')',
         _ => ']',
     }
+}
+
+fn is_regex_flag(character: char) -> bool {
+    matches!(character, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'v' | 'y')
+}
+
+fn regex_literal_has_valid_follow(contents: &str, start_index: usize) -> bool {
+    let mut index = start_index;
+
+    while index < contents.len() {
+        let Some(character) = current_char(contents, index) else {
+            return true;
+        };
+
+        if matches!(character, '\n' | '\r') {
+            return true;
+        }
+
+        if character.is_whitespace() {
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        if regex_literal_can_be_followed_by_character(character) {
+            return true;
+        }
+
+        if is_identifier_start(character) {
+            let token = read_identifier(contents, index);
+            return matches!(token, "as" | "in" | "instanceof" | "satisfies");
+        }
+
+        return false;
+    }
+
+    true
+}
+
+fn regex_literal_can_be_followed_by_character(character: char) -> bool {
+    matches!(
+        character,
+        '.' | '['
+            | ';'
+            | ','
+            | ')'
+            | '}'
+            | ']'
+            | ':'
+            | '?'
+            | '+'
+            | '-'
+            | '*'
+            | '%'
+            | '&'
+            | '|'
+            | '^'
+            | '<'
+            | '>'
+            | '='
+            | '!'
+            | '~'
+            | '/'
+    )
 }
 
 fn has_token_boundary(contents: &str, start_index: usize, token: &str) -> bool {
@@ -1334,6 +1857,152 @@ fn find_previous_non_whitespace(contents: &str, start_index: usize) -> Option<us
         .find_map(|(index, character)| (!character.is_whitespace()).then_some(index))
 }
 
+fn find_previous_significant_index(contents: &str, start_index: usize) -> Option<usize> {
+    let mut search_end = start_index;
+
+    loop {
+        let candidate_index = find_previous_non_whitespace(contents, search_end)?;
+
+        if let Some(comment_start) = find_trailing_comment_start(contents, candidate_index) {
+            search_end = comment_start;
+            continue;
+        }
+
+        return Some(candidate_index);
+    }
+}
+
+fn find_trailing_comment_start(contents: &str, candidate_index: usize) -> Option<usize> {
+    if current_char(contents, candidate_index) == Some('/')
+        && previous_char(contents, candidate_index) == Some('*')
+    {
+        return contents[..candidate_index.saturating_sub(1)].rfind("/*");
+    }
+
+    find_line_comment_start(contents, candidate_index)
+}
+
+fn line_start_index(contents: &str, index: usize) -> usize {
+    contents[..index]
+        .char_indices()
+        .rev()
+        .find_map(|(character_index, character)| {
+            matches!(character, '\n' | '\r').then_some(character_index + character.len_utf8())
+        })
+        .unwrap_or(0)
+}
+
+fn find_line_comment_start(contents: &str, candidate_index: usize) -> Option<usize> {
+    let line_start = line_start_index(contents, candidate_index);
+    let mut index = line_start;
+
+    while index <= candidate_index {
+        let character = current_char(contents, index)?;
+
+        if character == '\'' || character == '"' {
+            index = skip_quoted_string(contents, index, character);
+            continue;
+        }
+
+        if character == '`' {
+            index = skip_template_string_for_comment_scan(contents, index);
+            continue;
+        }
+
+        if character == '/' && peek_char(contents, index + 1) == Some('*') {
+            index = skip_block_comment(contents, index);
+            continue;
+        }
+
+        if character == '/' && peek_char(contents, index + 1) == Some('/') {
+            return Some(index);
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    None
+}
+
+fn skip_template_string_for_comment_scan(contents: &str, start_index: usize) -> usize {
+    let mut index = start_index + 1;
+
+    while index < contents.len() {
+        let Some(character) = current_char(contents, index) else {
+            break;
+        };
+
+        if character == '\\' {
+            let next_index = advance_one(contents, index);
+            if next_index >= contents.len() {
+                return contents.len();
+            }
+            index = advance_one(contents, next_index);
+            continue;
+        }
+
+        if character == '`' {
+            return index + 1;
+        }
+
+        if character == '$' && peek_char(contents, index + 1) == Some('{') {
+            index = skip_balanced_expression_for_comment_scan(contents, index + 2);
+            continue;
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    contents.len()
+}
+
+fn skip_balanced_expression_for_comment_scan(contents: &str, start_index: usize) -> usize {
+    let mut stack = vec!['}'];
+    let mut index = start_index;
+
+    while index < contents.len() && !stack.is_empty() {
+        let Some(character) = current_char(contents, index) else {
+            break;
+        };
+
+        if character == '/' && peek_char(contents, index + 1) == Some('/') {
+            index = skip_line_comment(contents, index);
+            continue;
+        }
+
+        if character == '/' && peek_char(contents, index + 1) == Some('*') {
+            index = skip_block_comment(contents, index);
+            continue;
+        }
+
+        if character == '\'' || character == '"' {
+            index = skip_quoted_string(contents, index, character);
+            continue;
+        }
+
+        if character == '`' {
+            index = skip_template_string_for_comment_scan(contents, index);
+            continue;
+        }
+
+        if matches!(character, '{' | '(' | '[') {
+            stack.push(get_closing_character(character));
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        if Some(character) == stack.last().copied() {
+            stack.pop();
+            index = advance_one(contents, index);
+            continue;
+        }
+
+        index = advance_one(contents, index);
+    }
+
+    index
+}
+
 fn is_likely_jsx_tag(tag_text: &str) -> bool {
     if tag_text == "<>" || tag_text == "</>" {
         return true;
@@ -1369,6 +2038,10 @@ fn read_identifier(contents: &str, start_index: usize) -> &str {
 }
 
 fn previous_identifier_token(contents: &str, end_index: usize) -> Option<&str> {
+    previous_identifier_span(contents, end_index).map(|(_, token)| token)
+}
+
+fn previous_identifier_span(contents: &str, end_index: usize) -> Option<(usize, &str)> {
     let current = current_char(contents, end_index)?;
     if !is_identifier_character(current) {
         return None;
@@ -1382,7 +2055,7 @@ fn previous_identifier_token(contents: &str, end_index: usize) -> Option<&str> {
         start = index;
     }
 
-    Some(&contents[start..advance_one(contents, end_index)])
+    Some((start, &contents[start..advance_one(contents, end_index)]))
 }
 
 fn is_identifier_start(character: char) -> bool {
@@ -1395,6 +2068,36 @@ fn is_identifier_character(character: char) -> bool {
 
 fn normalize_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn head_ends_with_tokens(head: &str, suffix: &[&str]) -> bool {
+    let tokens = head.split_whitespace().collect::<Vec<_>>();
+    tokens.ends_with(suffix)
+}
+
+fn contains_assignment_operator(head: &str) -> bool {
+    let mut characters = head.char_indices().peekable();
+
+    while let Some((index, character)) = characters.next() {
+        if character != '=' {
+            continue;
+        }
+
+        let previous = head[..index].chars().next_back();
+        let next = characters.peek().map(|(_, next_character)| *next_character);
+
+        if matches!(previous, Some('=' | '!' | '<' | '>')) {
+            continue;
+        }
+
+        if matches!(next, Some('=' | '>')) {
+            continue;
+        }
+
+        return true;
+    }
+
+    false
 }
 
 fn current_char(contents: &str, index: usize) -> Option<char> {
