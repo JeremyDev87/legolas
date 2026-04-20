@@ -904,6 +904,10 @@ fn try_parse_require(contents: &str, start_index: usize) -> Option<ParsedToken> 
 fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingWarning> {
     let normalized_clause = normalize_whitespace(clause);
 
+    if normalized_clause.is_empty() {
+        return None;
+    }
+
     if is_namespace_import_clause(&normalized_clause) && is_namespace_sensitive_package(specifier) {
         return Some(TreeShakingWarning {
             key: "namespace-ui-import".to_string(),
@@ -917,17 +921,8 @@ fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingW
         });
     }
 
-    if specifier == "lodash" && !normalized_clause.is_empty() {
-        return Some(TreeShakingWarning {
-            key: "lodash-root-import".to_string(),
-            package_name: "lodash".to_string(),
-            message: "Root lodash imports often keep more code than expected in client bundles."
-                .to_string(),
-            recommendation: "Prefer per-method imports or lodash-es.".to_string(),
-            estimated_kb: 26,
-            files: Vec::new(),
-            finding: Default::default(),
-        });
+    if let Some(warning) = root_barrel_tree_shaking_hint(specifier) {
+        return Some(warning);
     }
 
     if specifier == "react-icons" {
@@ -943,6 +938,29 @@ fn build_tree_shaking_hint(specifier: &str, clause: &str) -> Option<TreeShakingW
     }
 
     None
+}
+
+fn root_barrel_tree_shaking_hint(specifier: &str) -> Option<TreeShakingWarning> {
+    let (key, package_name, message, recommendation, estimated_kb) = match specifier {
+        "lodash" => (
+            "lodash-root-import",
+            "lodash",
+            "Root lodash imports often keep more code than expected in client bundles.",
+            "Prefer per-method imports or lodash-es.",
+            26,
+        ),
+        _ => return None,
+    };
+
+    Some(TreeShakingWarning {
+        key: key.to_string(),
+        package_name: package_name.to_string(),
+        message: message.to_string(),
+        recommendation: recommendation.to_string(),
+        estimated_kb,
+        files: Vec::new(),
+        finding: Default::default(),
+    })
 }
 
 fn build_tree_shaking_finding(
