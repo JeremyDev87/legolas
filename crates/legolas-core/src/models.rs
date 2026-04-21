@@ -1,4 +1,4 @@
-use crate::findings::FindingMetadata;
+use crate::{artifacts::ArtifactSummary, findings::FindingMetadata};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -8,6 +8,8 @@ pub struct Analysis {
     pub package_manager: String,
     pub frameworks: Vec<String>,
     pub bundle_artifacts: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_summary: Option<ArtifactSummary>,
     pub package_summary: PackageSummary,
     pub source_summary: SourceSummary,
     pub heavy_dependencies: Vec<HeavyDependency>,

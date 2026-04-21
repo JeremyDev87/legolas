@@ -56,6 +56,7 @@ fn normalize_analysis_value(analysis: &mut Value) {
     replace_string_field(analysis, &["metadata", "generatedAt"], "<GENERATED_AT>");
     normalize_string_array(analysis, &["bundleArtifacts"]);
     normalize_string_array(analysis, &["warnings"]);
+    normalize_artifact_summary(analysis);
     normalize_object_array_string_field(analysis, &["heavyDependencies"], "importedBy");
     normalize_object_array_string_field(analysis, &["heavyDependencies"], "dynamicImportedBy");
     normalize_object_array_object_array_string_field(
@@ -171,4 +172,26 @@ fn get_path_mut<'a>(value: &'a mut Value, path: &[&str]) -> Option<&'a mut Value
 #[allow(dead_code)]
 fn to_posix(value: String) -> String {
     value.replace('\\', "/")
+}
+
+#[allow(dead_code)]
+fn normalize_artifact_summary(analysis: &mut Value) {
+    normalize_string_array(analysis, &["artifactSummary", "entrypoints"]);
+    normalize_object_array_string_field(analysis, &["artifactSummary", "chunks"], "entrypoints");
+    normalize_object_array_string_field(analysis, &["artifactSummary", "chunks"], "files");
+    normalize_object_array_string_scalar_field(analysis, &["artifactSummary", "modules"], "id");
+}
+
+#[allow(dead_code)]
+fn normalize_object_array_string_scalar_field(root: &mut Value, path: &[&str], field: &str) {
+    let Some(Value::Array(items)) = get_path_mut(root, path) else {
+        return;
+    };
+
+    for item in items {
+        let Some(value) = item.get(field).and_then(Value::as_str).map(str::to_string) else {
+            continue;
+        };
+        item[field] = Value::String(to_posix(value));
+    }
 }
