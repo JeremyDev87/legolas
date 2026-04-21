@@ -1,4 +1,4 @@
-use legolas_core::{budget::BudgetEvaluation, Analysis};
+use legolas_core::{budget::BudgetEvaluation, Analysis, FindingEvidence, FindingMetadata};
 
 pub fn format_scan_report(analysis: &Analysis) -> String {
     let mut lines = Vec::new();
@@ -45,9 +45,13 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
             } else {
                 format!("imported in {} file(s)", item.imported_by.len())
             };
-            format!(
-                "- {} ({} KB): {} {}.",
-                item.name, item.estimated_kb, item.rationale, import_text
+            with_evidence(
+                format!(
+                    "- {} ({} KB): {} {}.",
+                    item.name, item.estimated_kb, item.rationale, import_text
+                ),
+                &item.finding,
+                "  ",
             )
         },
         "- none",
@@ -59,11 +63,15 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
         &mut lines,
         &analysis.duplicate_packages,
         |item, _| {
-            format!(
-                "- {}: {} ({} KB avoidable)",
-                item.name,
-                item.versions.join(", "),
-                item.estimated_extra_kb
+            with_evidence(
+                format!(
+                    "- {}: {} ({} KB avoidable)",
+                    item.name,
+                    item.versions.join(", "),
+                    item.estimated_extra_kb
+                ),
+                &item.finding,
+                "  ",
             )
         },
         "- none",
@@ -75,9 +83,13 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
         &mut lines,
         &analysis.lazy_load_candidates,
         |item, _| {
-            format!(
-                "- {}: {}. Estimated win {} KB.",
-                item.name, item.reason, item.estimated_savings_kb
+            with_evidence(
+                format!(
+                    "- {}: {}. Estimated win {} KB.",
+                    item.name, item.reason, item.estimated_savings_kb
+                ),
+                &item.finding,
+                "  ",
             )
         },
         "- none",
@@ -88,7 +100,13 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
     append_section(
         &mut lines,
         &analysis.tree_shaking_warnings,
-        |item, _| format!("- {}: {}", item.package_name, item.message),
+        |item, _| {
+            with_evidence(
+                format!("- {}: {}", item.package_name, item.message),
+                &item.finding,
+                "  ",
+            )
+        },
         "- none",
     );
 
@@ -183,7 +201,10 @@ pub fn format_optimize_report(analysis: &Analysis, top: usize) -> String {
     append_section(
         &mut lines,
         &actions,
-        |item, index| format!("{}. {}", index + 1, item),
+        |item, index| match item.evidence.as_deref() {
+            Some(evidence) => format!("{}. {}\n   evidence: {}", index + 1, item.summary, evidence),
+            None => format!("{}. {}", index + 1, item.summary),
+        },
         "1. No high-confidence optimization candidates were found.",
     );
     lines.push(String::new());
@@ -256,31 +277,43 @@ struct BarItem {
     value: usize,
 }
 
-fn build_actions(analysis: &Analysis) -> Vec<String> {
+#[derive(Clone)]
+struct ActionLine {
+    summary: String,
+    evidence: Option<String>,
+}
+
+fn build_actions(analysis: &Analysis) -> Vec<ActionLine> {
     let mut actions = Vec::new();
 
     for dependency in analysis.heavy_dependencies.iter().take(3) {
         if dependency.imported_by.is_empty() {
-            actions.push(format!(
-                "Remove or justify {}; it is declared but not imported in scanned source files.",
-                dependency.name
-            ));
+            actions.push(ActionLine {
+                summary: format!(
+                    "Remove or justify {}; it is declared but not imported in scanned source files.",
+                    dependency.name
+                ),
+                evidence: first_evidence_line(&dependency.finding),
+            });
             continue;
         }
 
-        actions.push(format!(
-            "Review {}: {}",
-            dependency.name, dependency.recommendation
-        ));
+        actions.push(ActionLine {
+            summary: format!("Review {}: {}", dependency.name, dependency.recommendation),
+            evidence: first_evidence_line(&dependency.finding),
+        });
     }
 
     for duplicate in analysis.duplicate_packages.iter().take(3) {
-        actions.push(format!(
-            "Deduplicate {} versions ({}) to recover roughly {} KB.",
-            duplicate.name,
-            duplicate.versions.join(", "),
-            duplicate.estimated_extra_kb
-        ));
+        actions.push(ActionLine {
+            summary: format!(
+                "Deduplicate {} versions ({}) to recover roughly {} KB.",
+                duplicate.name,
+                duplicate.versions.join(", "),
+                duplicate.estimated_extra_kb
+            ),
+            evidence: first_evidence_line(&duplicate.finding),
+        });
     }
 
     for candidate in analysis.lazy_load_candidates.iter().take(3) {
@@ -289,20 +322,26 @@ fn build_actions(analysis: &Analysis) -> Vec<String> {
             .first()
             .map(String::as_str)
             .unwrap_or("undefined");
-        actions.push(format!(
-            "Lazy load {} in {} to target roughly {} KB of deferred code.",
-            candidate.name, file, candidate.estimated_savings_kb
-        ));
+        actions.push(ActionLine {
+            summary: format!(
+                "Lazy load {} in {} to target roughly {} KB of deferred code.",
+                candidate.name, file, candidate.estimated_savings_kb
+            ),
+            evidence: first_evidence_line(&candidate.finding),
+        });
     }
 
     for warning in analysis.tree_shaking_warnings.iter().take(2) {
-        actions.push(format!(
-            "Clean up {} imports: {}",
-            warning.package_name, warning.recommendation
-        ));
+        actions.push(ActionLine {
+            summary: format!(
+                "Clean up {} imports: {}",
+                warning.package_name, warning.recommendation
+            ),
+            evidence: first_evidence_line(&warning.finding),
+        });
     }
 
-    dedupe(actions)
+    dedupe_actions(actions)
 }
 
 fn render_bars(items: Vec<BarItem>) -> String {
@@ -342,16 +381,50 @@ where
     }
 }
 
-fn dedupe(items: Vec<String>) -> Vec<String> {
+fn dedupe_actions(items: Vec<ActionLine>) -> Vec<ActionLine> {
     let mut deduped = Vec::new();
 
     for item in items {
-        if !deduped.contains(&item) {
+        if !deduped
+            .iter()
+            .any(|existing: &ActionLine| existing.summary == item.summary)
+        {
             deduped.push(item);
         }
     }
 
     deduped
+}
+
+fn with_evidence(summary: String, finding: &FindingMetadata, indent: &str) -> String {
+    match first_evidence_line(finding) {
+        Some(evidence) => format!("{summary}\n{indent}evidence: {evidence}"),
+        None => summary,
+    }
+}
+
+fn first_evidence_line(finding: &FindingMetadata) -> Option<String> {
+    finding.evidence.first().map(format_evidence)
+}
+
+fn format_evidence(evidence: &FindingEvidence) -> String {
+    let mut parts = Vec::new();
+
+    if let Some(file) = evidence.file.as_deref() {
+        parts.push(file.to_string());
+    }
+    if let Some(specifier) = evidence.specifier.as_deref() {
+        parts.push(format!("specifier: {specifier}"));
+    }
+    if let Some(detail) = evidence.detail.as_deref() {
+        parts.push(detail.to_string());
+    }
+
+    if parts.is_empty() {
+        evidence.kind.clone()
+    } else {
+        parts.join(" | ")
+    }
 }
 
 fn append_warnings(lines: &mut Vec<String>, warnings: &[String]) {
