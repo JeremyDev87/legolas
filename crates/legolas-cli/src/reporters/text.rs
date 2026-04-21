@@ -71,7 +71,7 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
         &mut lines,
         &analysis.duplicate_packages,
         |item, _| {
-            with_evidence(
+            with_detail_lines(
                 format!(
                     "- {}{}: {} ({} KB avoidable)",
                     item.name,
@@ -79,6 +79,7 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
                     item.versions.join(", "),
                     item.estimated_extra_kb
                 ),
+                &duplicate_origin_lines(item),
                 &item.finding,
                 "  ",
             )
@@ -450,10 +451,23 @@ fn dedupe_actions(items: Vec<ActionLine>) -> Vec<ActionLine> {
 }
 
 fn with_evidence(summary: String, finding: &FindingMetadata, indent: &str) -> String {
-    match first_evidence_line(finding) {
-        Some(evidence) => format!("{summary}\n{indent}evidence: {evidence}"),
-        None => summary,
+    with_detail_lines(summary, &[], finding, indent)
+}
+
+fn with_detail_lines(
+    summary: String,
+    details: &[String],
+    finding: &FindingMetadata,
+    indent: &str,
+) -> String {
+    let mut lines = vec![summary];
+    lines.extend(details.iter().map(|detail| format!("{indent}{detail}")));
+
+    if let Some(evidence) = first_evidence_line(finding) {
+        lines.push(format!("{indent}evidence: {evidence}"));
     }
+
+    lines.join("\n")
 }
 
 fn confidence_bracket(finding: &FindingMetadata) -> String {
@@ -622,6 +636,30 @@ fn format_evidence(evidence: &FindingEvidence) -> String {
     } else {
         parts.join(" | ")
     }
+}
+
+fn duplicate_origin_lines(item: &legolas_core::DuplicatePackage) -> Vec<String> {
+    item.origins
+        .iter()
+        .map(|origin| {
+            format!(
+                "origin: {} via {}",
+                origin.version,
+                format_origin_chain(origin)
+            )
+        })
+        .collect()
+}
+
+fn format_origin_chain(origin: &legolas_core::DuplicateOrigin) -> String {
+    let mut chain = origin.via_chain.clone();
+    if chain.is_empty() {
+        chain.push(origin.root_requester.clone());
+    } else if chain.first() != Some(&origin.root_requester) {
+        chain.insert(0, origin.root_requester.clone());
+    }
+
+    chain.join(" -> ")
 }
 
 fn append_warnings(lines: &mut Vec<String>, warnings: &[String]) {
