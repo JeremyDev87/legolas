@@ -4,8 +4,9 @@ use legolas_cli::reporters::text::{
     format_optimize_report, format_scan_report, format_visualization_report,
 };
 use legolas_core::{
-    Analysis, DuplicatePackage, FindingAnalysisSource, FindingEvidence, FindingMetadata,
-    HeavyDependency, Impact, LazyLoadCandidate, Metadata, PackageSummary, SourceSummary,
+    Analysis, DuplicateOrigin, DuplicatePackage, FindingAnalysisSource, FindingEvidence,
+    FindingMetadata, HeavyDependency, Impact, LazyLoadCandidate, Metadata, PackageSummary,
+    SourceSummary,
 };
 
 fn load_analysis() -> Analysis {
@@ -48,6 +49,8 @@ fn scan_and_optimize_reports_render_compact_evidence_lines() {
     assert!(
         scan.contains("  evidence: src/Dashboard.tsx | specifier: lodash | root package import")
     );
+    assert!(scan.contains("  origin: 4.17.20 via lodash"));
+    assert!(scan.contains("  origin: 4.17.21 via lodash"));
 
     let optimize = format_optimize_report(&analysis, 5);
     assert!(optimize.contains(
@@ -99,6 +102,36 @@ fn scan_and_optimize_reports_only_render_the_first_evidence_line_per_finding() {
         )
     );
     assert!(!optimize.contains("second evidence detail"));
+}
+
+#[test]
+fn scan_report_renders_all_duplicate_origin_lines() {
+    let mut analysis = base_analysis("duplicate-app");
+    analysis.duplicate_packages = vec![DuplicatePackage {
+        name: "lodash".to_string(),
+        versions: vec![
+            "4.17.19".to_string(),
+            "4.17.20".to_string(),
+            "4.17.21".to_string(),
+        ],
+        count: 3,
+        estimated_extra_kb: 36,
+        origins: vec![
+            origin("4.17.19", "shell", &["shell", "shared"]),
+            origin("4.17.20", "admin", &["admin"]),
+            origin("4.17.21", "docs", &["docs", "shared"]),
+        ],
+        finding: FindingMetadata::new(
+            "duplicate-package:lodash",
+            FindingAnalysisSource::LockfileTrace,
+        ),
+    }];
+
+    let scan = format_scan_report(&analysis);
+    assert!(scan.contains("- lodash: 4.17.19, 4.17.20, 4.17.21 (36 KB avoidable)"));
+    assert!(scan.contains("  origin: 4.17.19 via shell -> shared"));
+    assert!(scan.contains("  origin: 4.17.20 via admin"));
+    assert!(scan.contains("  origin: 4.17.21 via docs -> shared"));
 }
 
 #[test]
@@ -219,5 +252,13 @@ fn base_analysis(name: &str) -> Analysis {
             generated_at: "<GENERATED_AT>".to_string(),
         },
         ..Analysis::default()
+    }
+}
+
+fn origin(version: &str, root_requester: &str, via_chain: &[&str]) -> DuplicateOrigin {
+    DuplicateOrigin {
+        version: version.to_string(),
+        root_requester: root_requester.to_string(),
+        via_chain: via_chain.iter().map(|value| (*value).to_string()).collect(),
     }
 }
