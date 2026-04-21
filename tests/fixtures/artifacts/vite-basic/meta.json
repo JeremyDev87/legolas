@@ -1,0 +1,31 @@
+{
+  "outputs": [
+    {
+      "file": "dist/assets/main.js",
+      "name": "main",
+      "type": "chunk",
+      "isEntry": true,
+      "isDynamicEntry": false,
+      "modules": {
+        "/workspace/src/main.ts": {
+          "renderedLength": 1100
+        },
+        "/workspace/node_modules/vue/dist/vue.runtime.esm-bundler.js": {
+          "renderedLength": 2800
+        }
+      }
+    },
+    {
+      "file": "dist/assets/vendor.js",
+      "name": "vendor",
+      "type": "chunk",
+      "isEntry": false,
+      "isDynamicEntry": false,
+      "modules": {
+        "/workspace/node_modules/vue/dist/vue.runtime.esm-bundler.js": {
+          "renderedLength": 2500
+        }
+      }
+    }
+  ]
+}
