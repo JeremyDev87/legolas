@@ -102,5 +102,7 @@ where
     assert!(serialized.get("findingId").is_none());
     assert!(serialized.get("analysisSource").is_none());
     assert!(serialized.get("confidence").is_none());
+    assert!(serialized.get("actionPriority").is_none());
+    assert!(serialized.get("recommendedFix").is_none());
     assert!(serialized.get("evidence").is_none());
 }

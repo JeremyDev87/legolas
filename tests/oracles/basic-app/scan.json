@@ -32,6 +32,14 @@
       "findingId": "heavy-dependency:chart.js",
       "analysisSource": "source-import",
       "confidence": "high",
+      "actionPriority": 1,
+      "recommendedFix": {
+        "kind": "lazy-load",
+        "title": "Register only the chart primitives you use and lazy load dashboard surfaces.",
+        "targetFiles": [
+          "src/Dashboard.tsx"
+        ]
+      },
       "evidence": [
         {
           "kind": "source-file",
@@ -56,6 +64,14 @@
       "findingId": "heavy-dependency:react-icons",
       "analysisSource": "source-import",
       "confidence": "high",
+      "actionPriority": 3,
+      "recommendedFix": {
+        "kind": "narrow-import",
+        "title": "Import narrowly from specific icon files or migrate to a more tree-shakable icon set.",
+        "targetFiles": [
+          "src/Dashboard.tsx"
+        ]
+      },
       "evidence": [
         {
           "kind": "source-file",
@@ -80,6 +96,15 @@
       "findingId": "heavy-dependency:lodash",
       "analysisSource": "source-import",
       "confidence": "high",
+      "actionPriority": 4,
+      "recommendedFix": {
+        "kind": "narrow-import",
+        "title": "Use per-method imports or switch to lodash-es when the toolchain supports it.",
+        "targetFiles": [
+          "src/Dashboard.tsx"
+        ],
+        "replacement": "lodash-es"
+      },
       "evidence": [
         {
           "kind": "source-file",
@@ -101,7 +126,13 @@
       "estimatedExtraKb": 18,
       "findingId": "duplicate-package:lodash",
       "analysisSource": "lockfile-trace",
-      "confidence": "high"
+      "confidence": "high",
+      "actionPriority": 9,
+      "recommendedFix": {
+        "kind": "dedupe-package",
+        "title": "Deduplicate lodash to one installed version.",
+        "targetFiles": []
+      }
     }
   ],
   "lazyLoadCandidates": [
@@ -116,6 +147,14 @@
       "findingId": "lazy-load:chart.js",
       "analysisSource": "heuristic",
       "confidence": "medium",
+      "actionPriority": 2,
+      "recommendedFix": {
+        "kind": "lazy-load",
+        "title": "Register only the chart primitives you use and lazy load dashboard surfaces.",
+        "targetFiles": [
+          "src/Dashboard.tsx"
+        ]
+      },
       "evidence": [
         {
           "kind": "source-file",
@@ -136,6 +175,14 @@
       "findingId": "lazy-load:react-icons",
       "analysisSource": "heuristic",
       "confidence": "medium",
+      "actionPriority": 5,
+      "recommendedFix": {
+        "kind": "lazy-load",
+        "title": "Import narrowly from specific icon files or migrate to a more tree-shakable icon set.",
+        "targetFiles": [
+          "src/Dashboard.tsx"
+        ]
+      },
       "evidence": [
         {
           "kind": "source-file",
@@ -156,6 +203,14 @@
       "findingId": "lazy-load:lodash",
       "analysisSource": "heuristic",
       "confidence": "medium",
+      "actionPriority": 6,
+      "recommendedFix": {
+        "kind": "lazy-load",
+        "title": "Use per-method imports or switch to lodash-es when the toolchain supports it.",
+        "targetFiles": [
+          "src/Dashboard.tsx"
+        ]
+      },
       "evidence": [
         {
           "kind": "source-file",
@@ -179,6 +234,15 @@
       "findingId": "tree-shaking:lodash-root-import",
       "analysisSource": "source-import",
       "confidence": "high",
+      "actionPriority": 7,
+      "recommendedFix": {
+        "kind": "narrow-import",
+        "title": "Prefer per-method imports or lodash-es.",
+        "targetFiles": [
+          "src/Dashboard.tsx"
+        ],
+        "replacement": "lodash-es"
+      },
       "evidence": [
         {
           "kind": "source-file",
@@ -200,6 +264,14 @@
       "findingId": "tree-shaking:react-icons-root-import",
       "analysisSource": "source-import",
       "confidence": "high",
+      "actionPriority": 8,
+      "recommendedFix": {
+        "kind": "narrow-import",
+        "title": "Import from the specific icon pack path instead.",
+        "targetFiles": [
+          "src/Dashboard.tsx"
+        ]
+      },
       "evidence": [
         {
           "kind": "source-file",

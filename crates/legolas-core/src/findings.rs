@@ -1,3 +1,4 @@
+use crate::models::RecommendedFix;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +62,10 @@ pub struct FindingMetadata {
     pub analysis_source: Option<FindingAnalysisSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confidence: Option<FindingConfidence>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_priority: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_fix: Option<RecommendedFix>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<FindingEvidence>,
 }
@@ -71,6 +76,8 @@ impl FindingMetadata {
             finding_id: Some(finding_id.into()),
             analysis_source: Some(analysis_source),
             confidence: None,
+            action_priority: None,
+            recommended_fix: None,
             evidence: Vec::new(),
         }
     }
@@ -88,6 +95,16 @@ impl FindingMetadata {
         self
     }
 
+    pub fn with_action_priority(mut self, action_priority: usize) -> Self {
+        self.action_priority = Some(action_priority);
+        self
+    }
+
+    pub fn with_recommended_fix(mut self, recommended_fix: RecommendedFix) -> Self {
+        self.recommended_fix = Some(recommended_fix);
+        self
+    }
+
     pub fn push_evidence(&mut self, evidence: FindingEvidence) {
         self.evidence.push(evidence);
     }
@@ -96,6 +113,8 @@ impl FindingMetadata {
         self.finding_id.is_none()
             && self.analysis_source.is_none()
             && self.confidence.is_none()
+            && self.action_priority.is_none()
+            && self.recommended_fix.is_none()
             && self.evidence.is_empty()
     }
 }

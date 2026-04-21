@@ -10,6 +10,7 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::{
+    action_plan::apply_action_plan,
     confidence::{score_duplicate_package, score_heavy_dependency, score_lazy_load_candidate},
     error::Result,
     findings::{FindingAnalysisSource, FindingEvidence, FindingMetadata},
@@ -68,7 +69,7 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
         &tree_shaking_warnings,
     );
 
-    Ok(Analysis {
+    let mut analysis = Analysis {
         project_root: project_root.to_string_lossy().to_string(),
         package_manager,
         frameworks,
@@ -97,7 +98,10 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
             },
             generated_at: generated_at_string(),
         },
-    })
+    };
+    apply_action_plan(&mut analysis);
+
+    Ok(analysis)
 }
 
 fn build_package_summary(manifest: &Value) -> PackageSummary {

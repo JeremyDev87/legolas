@@ -110,3 +110,33 @@ pub struct Metadata {
     pub mode: String,
     pub generated_at: String,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ActionDifficulty {
+    Easy,
+    Medium,
+    Hard,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendedFix {
+    pub kind: String,
+    pub title: String,
+    pub target_files: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionPlanItem {
+    pub action_priority: usize,
+    pub finding_id: String,
+    pub estimated_savings_kb: usize,
+    pub confidence: crate::FindingConfidence,
+    pub difficulty: ActionDifficulty,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_fix: Option<RecommendedFix>,
+}

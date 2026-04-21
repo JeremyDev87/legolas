@@ -1,3 +1,4 @@
+pub mod action_plan;
 pub mod aliases;
 pub mod analyze;
 pub mod artifacts;
@@ -14,6 +15,7 @@ pub mod package_intelligence;
 pub mod project_shape;
 pub mod workspace;
 
+pub use action_plan::*;
 pub use analyze::analyze_project;
 pub use confidence::*;
 pub use error::{LegolasError, Result};
