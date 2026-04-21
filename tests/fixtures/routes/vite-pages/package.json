@@ -1,0 +1,7 @@
+{
+  "name": "route-context-vite-pages",
+  "dependencies": {
+    "vite": "^6.0.0",
+    "react": "^19.0.0"
+  }
+}
