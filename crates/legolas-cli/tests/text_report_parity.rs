@@ -37,6 +37,12 @@ fn scan_and_optimize_reports_render_compact_evidence_lines() {
 
     let scan = format_scan_report(&analysis);
     assert!(scan.contains(
+        "- chart.js (160 KB) [high confidence]: Charting code is often only needed on a subset of screens. imported in 1 file(s)."
+    ));
+    assert!(scan.contains(
+        "- chart.js [medium confidence]: chart.js is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 120 KB."
+    ));
+    assert!(scan.contains(
         "  evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens."
     ));
     assert!(

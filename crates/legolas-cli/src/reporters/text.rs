@@ -51,8 +51,12 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
             };
             with_evidence(
                 format!(
-                    "- {} ({} KB): {} {}.",
-                    item.name, item.estimated_kb, item.rationale, import_text
+                    "- {} ({} KB){}: {} {}.",
+                    item.name,
+                    item.estimated_kb,
+                    confidence_bracket(&item.finding),
+                    item.rationale,
+                    import_text
                 ),
                 &item.finding,
                 "  ",
@@ -69,8 +73,9 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
         |item, _| {
             with_evidence(
                 format!(
-                    "- {}: {} ({} KB avoidable)",
+                    "- {}{}: {} ({} KB avoidable)",
                     item.name,
+                    confidence_bracket(&item.finding),
                     item.versions.join(", "),
                     item.estimated_extra_kb
                 ),
@@ -89,8 +94,11 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
         |item, _| {
             with_evidence(
                 format!(
-                    "- {}: {}. Estimated win {} KB.",
-                    item.name, item.reason, item.estimated_savings_kb
+                    "- {}{}: {}. Estimated win {} KB.",
+                    item.name,
+                    confidence_bracket(&item.finding),
+                    item.reason,
+                    item.estimated_savings_kb
                 ),
                 &item.finding,
                 "  ",
@@ -106,7 +114,12 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
         &analysis.tree_shaking_warnings,
         |item, _| {
             with_evidence(
-                format!("- {}: {}", item.package_name, item.message),
+                format!(
+                    "- {}{}: {}",
+                    item.package_name,
+                    confidence_bracket(&item.finding),
+                    item.message
+                ),
                 &item.finding,
                 "  ",
             )
@@ -443,6 +456,13 @@ fn with_evidence(summary: String, finding: &FindingMetadata, indent: &str) -> St
     }
 }
 
+fn confidence_bracket(finding: &FindingMetadata) -> String {
+    finding
+        .confidence
+        .map(|confidence| format!(" [{}]", confidence_phrase(confidence)))
+        .unwrap_or_default()
+}
+
 #[derive(Clone)]
 struct ActionContext {
     headline: String,
@@ -523,6 +543,18 @@ fn difficulty_label(difficulty: ActionDifficulty) -> &'static str {
 }
 
 fn confidence_label(confidence: FindingConfidence) -> &'static str {
+    confidence_display(confidence)
+}
+
+fn confidence_phrase(confidence: FindingConfidence) -> &'static str {
+    match confidence {
+        FindingConfidence::Low => "low confidence",
+        FindingConfidence::Medium => "medium confidence",
+        FindingConfidence::High => "high confidence",
+    }
+}
+
+fn confidence_display(confidence: FindingConfidence) -> &'static str {
     match confidence {
         FindingConfidence::Low => "low",
         FindingConfidence::Medium => "medium",
