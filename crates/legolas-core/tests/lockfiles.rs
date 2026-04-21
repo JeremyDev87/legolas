@@ -4,7 +4,7 @@ use std::{fs, process::Command};
 
 use legolas_core::{
     lockfiles::{parse_duplicate_packages, DuplicateAnalysis},
-    DuplicatePackage,
+    DuplicateOrigin, DuplicatePackage,
 };
 use serde_json::json;
 use tempfile::tempdir;
@@ -19,8 +19,22 @@ fn parses_npm_v3_duplicates_from_the_packages_section() {
         analysis,
         DuplicateAnalysis {
             duplicates: vec![
-                duplicate("@scope/pkg", &["1.0.0", "1.2.0"]),
-                duplicate("lodash", &["4.17.20", "4.17.21"]),
+                duplicate_with_origins(
+                    "@scope/pkg",
+                    &["1.0.0", "1.2.0"],
+                    &[
+                        origin("1.0.0", "@scope/pkg", &["@scope/pkg"]),
+                        origin("1.2.0", "bar", &["bar"]),
+                    ],
+                ),
+                duplicate_with_origins(
+                    "lodash",
+                    &["4.17.20", "4.17.21"],
+                    &[
+                        origin("4.17.20", "lodash", &["lodash"]),
+                        origin("4.17.21", "foo", &["foo"]),
+                    ],
+                ),
             ],
             warnings: vec![],
         }
@@ -74,18 +88,23 @@ fn parses_npm_v1_duplicates_from_dependency_trees_and_sorts_versions_naturally()
         analysis,
         DuplicateAnalysis {
             duplicates: vec![
-                DuplicatePackage {
-                    name: "shared".to_string(),
-                    versions: vec![
-                        "1.2.0".to_string(),
-                        "1.2.2".to_string(),
-                        "1.2.10".to_string(),
+                duplicate_with_origins(
+                    "shared",
+                    &["1.2.0", "1.2.2", "1.2.10"],
+                    &[
+                        origin("1.2.0", "shared", &["shared"]),
+                        origin("1.2.2", "beta", &["beta"]),
+                        origin("1.2.10", "alpha", &["alpha"]),
                     ],
-                    count: 3,
-                    estimated_extra_kb: 36,
-                    finding: Default::default(),
-                },
-                duplicate("left-pad", &["1.0.0", "1.0.1"]),
+                ),
+                duplicate_with_origins(
+                    "left-pad",
+                    &["1.0.0", "1.0.1"],
+                    &[
+                        origin("1.0.0", "left-pad", &["left-pad"]),
+                        origin("1.0.1", "alpha", &["alpha"]),
+                    ],
+                ),
             ],
             warnings: vec![],
         }
@@ -101,7 +120,14 @@ fn parses_pnpm_duplicates_from_packages_and_snapshots_sections() {
     assert_eq!(
         analysis,
         DuplicateAnalysis {
-            duplicates: vec![duplicate("lodash", &["4.17.20", "4.17.21"])],
+            duplicates: vec![duplicate_with_origins(
+                "lodash",
+                &["4.17.20", "4.17.21"],
+                &[
+                    origin("4.17.20", "lodash", &["lodash"]),
+                    origin("4.17.21", "lodash", &["lodash"]),
+                ],
+            )],
             warnings: vec![],
         }
     );
@@ -116,7 +142,14 @@ fn parses_yarn_berry_entries_with_version_colons() {
     assert_eq!(
         analysis,
         DuplicateAnalysis {
-            duplicates: vec![duplicate("lodash", &["4.17.20", "4.17.21"])],
+            duplicates: vec![duplicate_with_origins(
+                "lodash",
+                &["4.17.20", "4.17.21"],
+                &[
+                    origin("4.17.20", "lodash", &["lodash"]),
+                    origin("4.17.21", "lodash", &["lodash"]),
+                ],
+            )],
             warnings: vec![],
         }
     );
@@ -131,7 +164,14 @@ fn parses_yarn_aliases_as_the_underlying_package_name() {
     assert_eq!(
         analysis,
         DuplicateAnalysis {
-            duplicates: vec![duplicate("react", &["18.2.0", "18.3.1"])],
+            duplicates: vec![duplicate_with_origins(
+                "react",
+                &["18.2.0", "18.3.1"],
+                &[
+                    origin("18.2.0", "react", &["react"]),
+                    origin("18.3.1", "react", &["react"]),
+                ],
+            )],
             warnings: vec![],
         }
     );
@@ -158,7 +198,50 @@ lodash@npm:^4.17.21:
     assert_eq!(
         analysis,
         DuplicateAnalysis {
-            duplicates: vec![duplicate("lodash", &["4.17.20", "4.17.21"])],
+            duplicates: vec![duplicate_with_origins(
+                "lodash",
+                &["4.17.20", "4.17.21"],
+                &[
+                    origin("4.17.20", "lodash", &["lodash"]),
+                    origin("4.17.21", "lodash", &["lodash"]),
+                ],
+            )],
+            warnings: vec![],
+        }
+    );
+}
+
+#[test]
+fn parses_yarn_entries_with_leading_slashes_like_berry_exports() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let yarn_lock_path = temp_dir.path().join("yarn.lock");
+
+    fs::write(
+        &yarn_lock_path,
+        r#""/lodash@npm:^4.17.20":
+  version: "4.17.20"
+  resolution: "/lodash@npm:4.17.20"
+
+"/lodash@npm:^4.17.21":
+  version: "4.17.21"
+  resolution: "/lodash@npm:4.17.21"
+"#,
+    )
+    .expect("write yarn lockfile");
+
+    let analysis = parse_duplicate_packages(temp_dir.path(), "yarn").expect("parse yarn lockfile");
+
+    assert_eq!(
+        analysis,
+        DuplicateAnalysis {
+            duplicates: vec![duplicate_with_origins(
+                "lodash",
+                &["4.17.20", "4.17.21"],
+                &[
+                    origin("4.17.20", "lodash", &["lodash"]),
+                    origin("4.17.21", "lodash", &["lodash"]),
+                ],
+            )],
             warnings: vec![],
         }
     );
@@ -307,6 +390,18 @@ fn sorts_versions_like_js_locale_compare_numeric() {
             versions: expected_versions,
             count: input_versions.len(),
             estimated_extra_kb: 162,
+            origins: input_versions
+                .iter()
+                .enumerate()
+                .map(|(index, version)| {
+                    let requester = format!("pkg-{index}");
+                    DuplicateOrigin {
+                        version: (*version).to_string(),
+                        root_requester: requester.clone(),
+                        via_chain: vec![requester],
+                    }
+                })
+                .collect(),
             finding: Default::default(),
         }]
     );
@@ -322,7 +417,14 @@ fn prefers_the_package_manager_lockfile_and_warns_about_the_rest() {
     assert_eq!(
         analysis,
         DuplicateAnalysis {
-            duplicates: vec![duplicate("kleur", &["4.1.4", "4.1.5"])],
+            duplicates: vec![duplicate_with_origins(
+                "kleur",
+                &["4.1.4", "4.1.5"],
+                &[
+                    origin("4.1.4", "kleur", &["kleur"]),
+                    origin("4.1.5", "kleur", &["kleur"]),
+                ],
+            )],
             warnings: vec![
                 "Multiple lockfiles detected. Duplicate analysis used pnpm-lock.yaml based on package manager \"pnpm@9.0.0\" and ignored package-lock.json.".to_string(),
             ],
@@ -339,7 +441,14 @@ fn falls_back_to_default_lockfile_priority_when_package_manager_is_unknown() {
     assert_eq!(
         analysis,
         DuplicateAnalysis {
-            duplicates: vec![duplicate("left-pad", &["1.0.0", "1.1.0"])],
+            duplicates: vec![duplicate_with_origins(
+                "left-pad",
+                &["1.0.0", "1.1.0"],
+                &[
+                    origin("1.0.0", "left-pad", &["left-pad"]),
+                    origin("1.1.0", "tooling", &["tooling"]),
+                ],
+            )],
             warnings: vec![
                 "Multiple lockfiles detected. Duplicate analysis used package-lock.json and ignored pnpm-lock.yaml.".to_string(),
             ],
@@ -356,13 +465,26 @@ fn returns_empty_results_when_no_supported_lockfile_exists() {
     assert_eq!(analysis, DuplicateAnalysis::default());
 }
 
-fn duplicate(name: &str, versions: &[&str]) -> DuplicatePackage {
+fn duplicate_with_origins(
+    name: &str,
+    versions: &[&str],
+    origins: &[DuplicateOrigin],
+) -> DuplicatePackage {
     DuplicatePackage {
         name: name.to_string(),
         versions: versions.iter().map(|value| (*value).to_string()).collect(),
         count: versions.len(),
         estimated_extra_kb: usize::max((versions.len().saturating_sub(1)) * 18, 18),
+        origins: origins.to_vec(),
         finding: Default::default(),
+    }
+}
+
+fn origin(version: &str, root_requester: &str, via_chain: &[&str]) -> DuplicateOrigin {
+    DuplicateOrigin {
+        version: version.to_string(),
+        root_requester: root_requester.to_string(),
+        via_chain: via_chain.iter().map(|value| (*value).to_string()).collect(),
     }
 }
 

@@ -124,6 +124,22 @@
       ],
       "count": 2,
       "estimatedExtraKb": 18,
+      "origins": [
+        {
+          "version": "4.17.20",
+          "rootRequester": "lodash",
+          "viaChain": [
+            "lodash"
+          ]
+        },
+        {
+          "version": "4.17.21",
+          "rootRequester": "lodash",
+          "viaChain": [
+            "lodash"
+          ]
+        }
+      ],
       "findingId": "duplicate-package:lodash",
       "analysisSource": "lockfile-trace",
       "confidence": "high",
