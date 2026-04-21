@@ -58,8 +58,32 @@ fn normalize_analysis_value(analysis: &mut Value) {
     normalize_string_array(analysis, &["warnings"]);
     normalize_object_array_string_field(analysis, &["heavyDependencies"], "importedBy");
     normalize_object_array_string_field(analysis, &["heavyDependencies"], "dynamicImportedBy");
+    normalize_object_array_object_array_string_field(
+        analysis,
+        &["heavyDependencies"],
+        "recommendedFix",
+        "targetFiles",
+    );
     normalize_object_array_string_field(analysis, &["lazyLoadCandidates"], "files");
+    normalize_object_array_object_array_string_field(
+        analysis,
+        &["lazyLoadCandidates"],
+        "recommendedFix",
+        "targetFiles",
+    );
     normalize_object_array_string_field(analysis, &["treeShakingWarnings"], "files");
+    normalize_object_array_object_array_string_field(
+        analysis,
+        &["treeShakingWarnings"],
+        "recommendedFix",
+        "targetFiles",
+    );
+    normalize_object_array_object_array_string_field(
+        analysis,
+        &["duplicatePackages"],
+        "recommendedFix",
+        "targetFiles",
+    );
 }
 
 #[allow(dead_code)]
@@ -94,6 +118,34 @@ fn normalize_object_array_string_field(root: &mut Value, path: &[&str], field: &
 
     for item in items {
         let Some(array) = item.get_mut(field).and_then(Value::as_array_mut) else {
+            continue;
+        };
+
+        for entry in array {
+            if let Some(value) = entry.as_str() {
+                *entry = Value::String(to_posix(value.to_string()));
+            }
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn normalize_object_array_object_array_string_field(
+    root: &mut Value,
+    path: &[&str],
+    object_field: &str,
+    array_field: &str,
+) {
+    let Some(Value::Array(items)) = get_path_mut(root, path) else {
+        return;
+    };
+
+    for item in items {
+        let Some(array) = item
+            .get_mut(object_field)
+            .and_then(|value| value.get_mut(array_field))
+            .and_then(Value::as_array_mut)
+        else {
             continue;
         };
 

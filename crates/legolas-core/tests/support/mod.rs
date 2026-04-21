@@ -39,6 +39,7 @@ pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
             item.imported_by = item.imported_by.into_iter().map(to_posix).collect();
             item.dynamic_imported_by = item.dynamic_imported_by.into_iter().map(to_posix).collect();
             normalize_finding_files(&mut item.finding);
+            normalize_recommended_fix_files(&mut item.finding);
             item
         })
         .collect();
@@ -48,6 +49,7 @@ pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
         .map(|mut item| {
             item.files = item.files.into_iter().map(to_posix).collect();
             normalize_finding_files(&mut item.finding);
+            normalize_recommended_fix_files(&mut item.finding);
             item
         })
         .collect();
@@ -57,6 +59,15 @@ pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
         .map(|mut item| {
             item.files = item.files.into_iter().map(to_posix).collect();
             normalize_finding_files(&mut item.finding);
+            normalize_recommended_fix_files(&mut item.finding);
+            item
+        })
+        .collect();
+    normalized.duplicate_packages = normalized
+        .duplicate_packages
+        .into_iter()
+        .map(|mut item| {
+            normalize_recommended_fix_files(&mut item.finding);
             item
         })
         .collect();
@@ -80,4 +91,16 @@ fn normalize_finding_files(finding: &mut legolas_core::FindingMetadata) {
             evidence.file = Some(to_posix(file));
         }
     }
+}
+
+fn normalize_recommended_fix_files(finding: &mut legolas_core::FindingMetadata) {
+    let Some(recommended_fix) = finding.recommended_fix.as_mut() else {
+        return;
+    };
+
+    recommended_fix.target_files = recommended_fix
+        .target_files
+        .drain(..)
+        .map(to_posix)
+        .collect();
 }
