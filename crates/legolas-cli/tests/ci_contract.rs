@@ -35,6 +35,44 @@ fn normalize(value: &str) -> String {
     value.replace('\\', "/")
 }
 
+fn triggered_finding(
+    finding_id: &str,
+    analysis_source: &str,
+    confidence: &str,
+) -> serde_json::Value {
+    json!({
+        "findingId": finding_id,
+        "analysisSource": analysis_source,
+        "confidence": confidence
+    })
+}
+
+fn potential_kb_saved_findings() -> Vec<serde_json::Value> {
+    vec![
+        triggered_finding("heavy-dependency:chart.js", "source-import", "high"),
+        triggered_finding("heavy-dependency:react-icons", "source-import", "high"),
+        triggered_finding("heavy-dependency:lodash", "source-import", "high"),
+        triggered_finding("duplicate-package:lodash", "lockfile-trace", "high"),
+        triggered_finding("lazy-load:chart.js", "heuristic", "medium"),
+        triggered_finding("lazy-load:react-icons", "heuristic", "medium"),
+        triggered_finding("lazy-load:lodash", "heuristic", "medium"),
+        triggered_finding("tree-shaking:lodash-root-import", "source-import", "high"),
+        triggered_finding(
+            "tree-shaking:react-icons-root-import",
+            "source-import",
+            "high",
+        ),
+    ]
+}
+
+fn dynamic_import_findings() -> Vec<serde_json::Value> {
+    vec![
+        triggered_finding("lazy-load:chart.js", "heuristic", "medium"),
+        triggered_finding("lazy-load:react-icons", "heuristic", "medium"),
+        triggered_finding("lazy-load:lodash", "heuristic", "medium"),
+    ]
+}
+
 #[test]
 fn ci_fail_returns_exit_code_one_and_fixed_failure_prefix() {
     let basic_app = support::fixture_path("tests/fixtures/parity/basic-app");
@@ -114,21 +152,24 @@ fn ci_json_output_uses_machine_readable_gate_shape() {
                     "actual": 366,
                     "warnAt": 40,
                     "failAt": 80,
-                    "status": "Fail"
+                    "status": "Fail",
+                    "triggeredFindings": potential_kb_saved_findings()
                 },
                 {
                     "key": "duplicatePackageCount",
                     "actual": 1,
                     "warnAt": 2,
                     "failAt": 4,
-                    "status": "Pass"
+                    "status": "Pass",
+                    "triggeredFindings": []
                 },
                 {
                     "key": "dynamicImportCount",
                     "actual": 0,
                     "warnAt": 1,
                     "failAt": 0,
-                    "status": "Fail"
+                    "status": "Fail",
+                    "triggeredFindings": dynamic_import_findings()
                 }
             ]
         })

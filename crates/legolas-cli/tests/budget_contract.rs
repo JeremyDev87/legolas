@@ -35,6 +35,52 @@ fn normalize(value: &str) -> String {
     value.replace('\\', "/")
 }
 
+fn triggered_finding(
+    finding_id: &str,
+    analysis_source: &str,
+    confidence: &str,
+) -> serde_json::Value {
+    json!({
+        "findingId": finding_id,
+        "analysisSource": analysis_source,
+        "confidence": confidence
+    })
+}
+
+fn potential_kb_saved_findings() -> Vec<serde_json::Value> {
+    vec![
+        triggered_finding("heavy-dependency:chart.js", "source-import", "high"),
+        triggered_finding("heavy-dependency:react-icons", "source-import", "high"),
+        triggered_finding("heavy-dependency:lodash", "source-import", "high"),
+        triggered_finding("duplicate-package:lodash", "lockfile-trace", "high"),
+        triggered_finding("lazy-load:chart.js", "heuristic", "medium"),
+        triggered_finding("lazy-load:react-icons", "heuristic", "medium"),
+        triggered_finding("lazy-load:lodash", "heuristic", "medium"),
+        triggered_finding("tree-shaking:lodash-root-import", "source-import", "high"),
+        triggered_finding(
+            "tree-shaking:react-icons-root-import",
+            "source-import",
+            "high",
+        ),
+    ]
+}
+
+fn duplicate_findings() -> Vec<serde_json::Value> {
+    vec![triggered_finding(
+        "duplicate-package:lodash",
+        "lockfile-trace",
+        "high",
+    )]
+}
+
+fn dynamic_import_findings() -> Vec<serde_json::Value> {
+    vec![
+        triggered_finding("lazy-load:chart.js", "heuristic", "medium"),
+        triggered_finding("lazy-load:react-icons", "heuristic", "medium"),
+        triggered_finding("lazy-load:lodash", "heuristic", "medium"),
+    ]
+}
+
 #[test]
 fn budget_text_output_uses_built_in_starter_thresholds() {
     let basic_app = support::fixture_path("tests/fixtures/parity/basic-app");
@@ -73,21 +119,24 @@ fn budget_json_output_has_a_stable_shape() {
                     "actual": 366,
                     "warnAt": 40,
                     "failAt": 80,
-                    "status": "Fail"
+                    "status": "Fail",
+                    "triggeredFindings": potential_kb_saved_findings()
                 },
                 {
                     "key": "duplicatePackageCount",
                     "actual": 1,
                     "warnAt": 2,
                     "failAt": 4,
-                    "status": "Pass"
+                    "status": "Pass",
+                    "triggeredFindings": []
                 },
                 {
                     "key": "dynamicImportCount",
                     "actual": 0,
                     "warnAt": 1,
                     "failAt": 0,
-                    "status": "Fail"
+                    "status": "Fail",
+                    "triggeredFindings": dynamic_import_findings()
                 }
             ]
         })
@@ -136,21 +185,24 @@ fn budget_uses_config_threshold_overrides_and_starter_fallbacks_together() {
                     "actual": 366,
                     "warnAt": 400,
                     "failAt": 500,
-                    "status": "Pass"
+                    "status": "Pass",
+                    "triggeredFindings": []
                 },
                 {
                     "key": "duplicatePackageCount",
                     "actual": 1,
                     "warnAt": 1,
                     "failAt": 2,
-                    "status": "Warn"
+                    "status": "Warn",
+                    "triggeredFindings": duplicate_findings()
                 },
                 {
                     "key": "dynamicImportCount",
                     "actual": 0,
                     "warnAt": 1,
                     "failAt": 0,
-                    "status": "Fail"
+                    "status": "Fail",
+                    "triggeredFindings": dynamic_import_findings()
                 }
             ]
         })
@@ -199,21 +251,24 @@ fn budget_uses_discovered_config_from_project_root() {
                     "actual": 366,
                     "warnAt": 40,
                     "failAt": 80,
-                    "status": "Fail"
+                    "status": "Fail",
+                    "triggeredFindings": potential_kb_saved_findings()
                 },
                 {
                     "key": "duplicatePackageCount",
                     "actual": 1,
                     "warnAt": 2,
                     "failAt": 4,
-                    "status": "Pass"
+                    "status": "Pass",
+                    "triggeredFindings": []
                 },
                 {
                     "key": "dynamicImportCount",
                     "actual": 0,
                     "warnAt": 1,
                     "failAt": 0,
-                    "status": "Fail"
+                    "status": "Fail",
+                    "triggeredFindings": dynamic_import_findings()
                 }
             ]
         })
