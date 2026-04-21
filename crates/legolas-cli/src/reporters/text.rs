@@ -1,4 +1,8 @@
-use legolas_core::{budget::BudgetEvaluation, Analysis, FindingEvidence, FindingMetadata};
+use legolas_core::{
+    budget::BudgetEvaluation, rank_actions, ActionDifficulty, Analysis, FindingConfidence,
+    FindingEvidence, FindingMetadata, RecommendedFix,
+};
+use std::collections::BTreeMap;
 
 pub fn format_scan_report(analysis: &Analysis) -> String {
     let mut lines = Vec::new();
@@ -201,10 +205,7 @@ pub fn format_optimize_report(analysis: &Analysis, top: usize) -> String {
     append_section(
         &mut lines,
         &actions,
-        |item, index| match item.evidence.as_deref() {
-            Some(evidence) => format!("{}. {}\n   evidence: {}", index + 1, item.summary, evidence),
-            None => format!("{}. {}", index + 1, item.summary),
-        },
+        render_action_line,
         "1. No high-confidence optimization candidates were found.",
     );
     lines.push(String::new());
@@ -279,39 +280,76 @@ struct BarItem {
 
 #[derive(Clone)]
 struct ActionLine {
-    summary: String,
+    headline: String,
+    details: Vec<String>,
     evidence: Option<String>,
 }
 
 fn build_actions(analysis: &Analysis) -> Vec<ActionLine> {
+    let ranked = build_ranked_actions(analysis);
+    if !ranked.is_empty() {
+        return ranked;
+    }
+
+    build_legacy_actions(analysis)
+}
+
+fn build_ranked_actions(analysis: &Analysis) -> Vec<ActionLine> {
+    let contexts = build_action_contexts(analysis);
+
+    rank_actions(analysis)
+        .into_iter()
+        .map(|action| {
+            let context = contexts.get(&action.finding_id);
+            ActionLine {
+                headline: format!(
+                    "{} [{} | {} confidence | ~{} KB]",
+                    context
+                        .map(|item| item.headline.as_str())
+                        .unwrap_or(action.finding_id.as_str()),
+                    difficulty_label(action.difficulty),
+                    confidence_label(action.confidence),
+                    action.estimated_savings_kb
+                ),
+                details: recommended_fix_details(action.recommended_fix.as_ref()),
+                evidence: context.and_then(|item| item.evidence.clone()),
+            }
+        })
+        .collect()
+}
+
+fn build_legacy_actions(analysis: &Analysis) -> Vec<ActionLine> {
     let mut actions = Vec::new();
 
     for dependency in analysis.heavy_dependencies.iter().take(3) {
         if dependency.imported_by.is_empty() {
             actions.push(ActionLine {
-                summary: format!(
+                headline: format!(
                     "Remove or justify {}; it is declared but not imported in scanned source files.",
                     dependency.name
                 ),
+                details: Vec::new(),
                 evidence: first_evidence_line(&dependency.finding),
             });
             continue;
         }
 
         actions.push(ActionLine {
-            summary: format!("Review {}: {}", dependency.name, dependency.recommendation),
+            headline: format!("Review {}: {}", dependency.name, dependency.recommendation),
+            details: Vec::new(),
             evidence: first_evidence_line(&dependency.finding),
         });
     }
 
     for duplicate in analysis.duplicate_packages.iter().take(3) {
         actions.push(ActionLine {
-            summary: format!(
+            headline: format!(
                 "Deduplicate {} versions ({}) to recover roughly {} KB.",
                 duplicate.name,
                 duplicate.versions.join(", "),
                 duplicate.estimated_extra_kb
             ),
+            details: Vec::new(),
             evidence: first_evidence_line(&duplicate.finding),
         });
     }
@@ -323,20 +361,22 @@ fn build_actions(analysis: &Analysis) -> Vec<ActionLine> {
             .map(String::as_str)
             .unwrap_or("undefined");
         actions.push(ActionLine {
-            summary: format!(
+            headline: format!(
                 "Lazy load {} in {} to target roughly {} KB of deferred code.",
                 candidate.name, file, candidate.estimated_savings_kb
             ),
+            details: Vec::new(),
             evidence: first_evidence_line(&candidate.finding),
         });
     }
 
     for warning in analysis.tree_shaking_warnings.iter().take(2) {
         actions.push(ActionLine {
-            summary: format!(
+            headline: format!(
                 "Clean up {} imports: {}",
                 warning.package_name, warning.recommendation
             ),
+            details: Vec::new(),
             evidence: first_evidence_line(&warning.finding),
         });
     }
@@ -387,7 +427,7 @@ fn dedupe_actions(items: Vec<ActionLine>) -> Vec<ActionLine> {
     for item in items {
         if !deduped
             .iter()
-            .any(|existing: &ActionLine| existing.summary == item.summary)
+            .any(|existing: &ActionLine| existing.headline == item.headline)
         {
             deduped.push(item);
         }
@@ -401,6 +441,131 @@ fn with_evidence(summary: String, finding: &FindingMetadata, indent: &str) -> St
         Some(evidence) => format!("{summary}\n{indent}evidence: {evidence}"),
         None => summary,
     }
+}
+
+#[derive(Clone)]
+struct ActionContext {
+    headline: String,
+    evidence: Option<String>,
+}
+
+fn build_action_contexts(analysis: &Analysis) -> BTreeMap<String, ActionContext> {
+    let mut contexts = BTreeMap::new();
+
+    for dependency in &analysis.heavy_dependencies {
+        insert_action_context(
+            &mut contexts,
+            dependency.finding.finding_id.as_ref(),
+            format!("Review {} upfront bundle weight", dependency.name),
+            &dependency.finding,
+        );
+    }
+
+    for duplicate in &analysis.duplicate_packages {
+        insert_action_context(
+            &mut contexts,
+            duplicate.finding.finding_id.as_ref(),
+            format!(
+                "Deduplicate {} versions ({})",
+                duplicate.name,
+                duplicate.versions.join(", ")
+            ),
+            &duplicate.finding,
+        );
+    }
+
+    for candidate in &analysis.lazy_load_candidates {
+        insert_action_context(
+            &mut contexts,
+            candidate.finding.finding_id.as_ref(),
+            format!("Lazy load {}", candidate.name),
+            &candidate.finding,
+        );
+    }
+
+    for warning in &analysis.tree_shaking_warnings {
+        insert_action_context(
+            &mut contexts,
+            warning.finding.finding_id.as_ref(),
+            format!("Clean up {} imports", warning.package_name),
+            &warning.finding,
+        );
+    }
+
+    contexts
+}
+
+fn insert_action_context(
+    contexts: &mut BTreeMap<String, ActionContext>,
+    finding_id: Option<&String>,
+    headline: String,
+    finding: &FindingMetadata,
+) {
+    let Some(finding_id) = finding_id else {
+        return;
+    };
+
+    contexts.insert(
+        finding_id.clone(),
+        ActionContext {
+            headline,
+            evidence: first_evidence_line(finding),
+        },
+    );
+}
+
+fn difficulty_label(difficulty: ActionDifficulty) -> &'static str {
+    match difficulty {
+        ActionDifficulty::Easy => "easy",
+        ActionDifficulty::Medium => "medium",
+        ActionDifficulty::Hard => "hard",
+    }
+}
+
+fn confidence_label(confidence: FindingConfidence) -> &'static str {
+    match confidence {
+        FindingConfidence::Low => "low",
+        FindingConfidence::Medium => "medium",
+        FindingConfidence::High => "high",
+    }
+}
+
+fn recommended_fix_details(recommended_fix: Option<&RecommendedFix>) -> Vec<String> {
+    let Some(recommended_fix) = recommended_fix else {
+        return Vec::new();
+    };
+
+    let mut details = vec![format!(
+        "recommended fix: {} - {}",
+        recommended_fix.kind, recommended_fix.title
+    )];
+
+    if !recommended_fix.target_files.is_empty() {
+        details.push(format!(
+            "targets: {}",
+            recommended_fix.target_files.join(", ")
+        ));
+    }
+
+    if let Some(replacement) = recommended_fix.replacement.as_deref() {
+        details.push(format!("replacement: {replacement}"));
+    }
+
+    details
+}
+
+fn render_action_line(item: &ActionLine, index: usize) -> String {
+    let mut lines = vec![format!("{}. {}", index + 1, item.headline)];
+
+    for detail in &item.details {
+        lines.push(format!("   {detail}"));
+    }
+
+    if let Some(evidence) = item.evidence.as_deref() {
+        lines.push(format!("   evidence: {evidence}"));
+    }
+
+    lines.join("\n")
 }
 
 fn first_evidence_line(finding: &FindingMetadata) -> Option<String> {
