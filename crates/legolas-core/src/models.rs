@@ -59,8 +59,18 @@ pub struct DuplicatePackage {
     pub versions: Vec<String>,
     pub count: usize,
     pub estimated_extra_kb: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub origins: Vec<DuplicateOrigin>,
     #[serde(flatten, default, skip_serializing_if = "FindingMetadata::is_empty")]
     pub finding: FindingMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateOrigin {
+    pub version: String,
+    pub root_requester: String,
+    pub via_chain: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

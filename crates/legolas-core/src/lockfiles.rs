@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 
@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 
 use crate::{
     error::Result,
-    models::DuplicatePackage,
+    models::{DuplicateOrigin, DuplicatePackage},
     workspace::{exists, read_json_if_exists, read_text_if_exists},
 };
 
@@ -36,17 +36,47 @@ struct Lockfile {
 }
 
 type VersionsByName = BTreeMap<String, Vec<String>>;
+type OriginsByName = BTreeMap<String, Vec<DuplicateOrigin>>;
+
+#[derive(Debug, Default)]
+struct DuplicateData {
+    versions_by_name: VersionsByName,
+    origins_by_name: OriginsByName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DependencyRef {
+    name: String,
+    selector: String,
+}
+
+#[derive(Debug, Clone)]
+struct DependencyNode {
+    name: String,
+    version: String,
+    dependencies: Vec<DependencyRef>,
+}
+
+#[derive(Debug, Clone)]
+struct YarnNode {
+    name: String,
+    version: String,
+    dependencies: Vec<DependencyRef>,
+    descriptors: Vec<String>,
+    resolution: Option<String>,
+}
 
 static PNPM_ENTRY_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^ {2,}'?(@?[^:'\s][^:]*?)'?:\s*$").expect("valid pnpm entry regex"));
+    Lazy::new(|| Regex::new(r"^ {2}'?(\S.*?)'?:\s*$").expect("valid pnpm entry regex"));
 static DESCRIPTOR_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^(@[^/]+/[^@]+|[^@]+)@(.+)$").expect("valid descriptor regex"));
-static YARN_ALIAS_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"@npm:(@[^/]+/[^@]+|[^@]+)@").expect("valid yarn alias regex"));
 static YARN_VERSION_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^ {2}version "(.*)"$"#).expect("valid yarn version regex"));
 static YARN_BERRY_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^ {2}version:\s+"?([^"]+)"?$"#).expect("valid yarn berry version regex")
+});
+static YARN_RESOLUTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^ {2}resolution(?::)?\s+"?([^"]+)"?$"#).expect("valid yarn resolution regex")
 });
 static SPLIT_HEADER_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r",\s*").expect("valid yarn header split regex"));
@@ -146,14 +176,14 @@ fn read_lockfile(lockfile: &Lockfile) -> Result<Vec<DuplicatePackage>> {
     }
 }
 
-fn collect_from_package_lock(package_lock: Option<Value>) -> VersionsByName {
-    let mut versions_by_name = BTreeMap::new();
+fn collect_from_package_lock(package_lock: Option<Value>) -> DuplicateData {
+    let mut data = DuplicateData::default();
     let Some(package_lock) = package_lock else {
-        return versions_by_name;
+        return data;
     };
 
     let Some(package_lock_object) = package_lock.as_object() else {
-        return versions_by_name;
+        return data;
     };
 
     if let Some(packages) = package_lock_object
@@ -170,14 +200,19 @@ fn collect_from_package_lock(package_lock: Option<Value>) -> VersionsByName {
                     continue;
                 };
 
-                let Some(start_index) = package_path.rfind("node_modules/") else {
+                let package_chain = package_path_chain(package_path);
+                let Some(package_name) = package_chain.last() else {
                     continue;
                 };
-                let package_name = &package_path[start_index + "node_modules/".len()..];
-                add_version(&mut versions_by_name, package_name, version);
+                add_version(&mut data.versions_by_name, package_name, version);
+                add_origin(
+                    &mut data.origins_by_name,
+                    package_name,
+                    build_duplicate_origin(version, &package_chain),
+                );
             }
 
-            return versions_by_name;
+            return data;
         }
     }
 
@@ -185,96 +220,282 @@ fn collect_from_package_lock(package_lock: Option<Value>) -> VersionsByName {
         .get("dependencies")
         .and_then(Value::as_object)
     {
-        collect_from_package_lock_dependencies(dependencies, &mut versions_by_name);
+        collect_from_package_lock_dependencies(
+            dependencies,
+            &mut data.versions_by_name,
+            &mut data.origins_by_name,
+            &mut Vec::new(),
+        );
     }
 
-    versions_by_name
+    data
 }
 
 fn collect_from_package_lock_dependencies(
     dependencies: &Map<String, Value>,
     versions_by_name: &mut VersionsByName,
+    origins_by_name: &mut OriginsByName,
+    path: &mut Vec<String>,
 ) {
     for (name, metadata) in dependencies {
+        path.push(name.clone());
+
         if let Some(version) = metadata
             .get("version")
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty())
         {
             add_version(versions_by_name, name, version);
+            add_origin(origins_by_name, name, build_duplicate_origin(version, path));
         }
 
         if let Some(child_dependencies) = metadata.get("dependencies").and_then(Value::as_object) {
-            collect_from_package_lock_dependencies(child_dependencies, versions_by_name);
+            collect_from_package_lock_dependencies(
+                child_dependencies,
+                versions_by_name,
+                origins_by_name,
+                path,
+            );
         }
+
+        path.pop();
     }
 }
 
-fn collect_from_pnpm_lock(content: &str) -> VersionsByName {
-    let mut versions_by_name = BTreeMap::new();
+fn collect_from_pnpm_lock(content: &str) -> DuplicateData {
+    let nodes = parse_pnpm_nodes(content);
+    let adjacency = build_pnpm_adjacency(&nodes);
+
+    collect_from_dependency_graph(nodes, adjacency)
+}
+
+fn parse_pnpm_nodes(content: &str) -> BTreeMap<String, DependencyNode> {
+    let mut nodes = BTreeMap::new();
     let mut inside_packages = false;
+    let mut current_node_id: Option<String> = None;
+    let mut inside_dependencies = false;
 
     for raw_line in content.split('\n') {
         let line = raw_line.trim_end_matches('\r');
 
         if line == "packages:" || line == "snapshots:" {
             inside_packages = true;
+            current_node_id = None;
+            inside_dependencies = false;
             continue;
         }
 
         if inside_packages && starts_with_ascii_alpha(line) {
             inside_packages = false;
+            current_node_id = None;
+            inside_dependencies = false;
         }
 
         if !inside_packages {
             continue;
         }
 
-        let Some(captures) = PNPM_ENTRY_RE.captures(line) else {
+        if let Some(captures) = PNPM_ENTRY_RE.captures(line) {
+            let mut descriptor = captures[1].to_string();
+            if let Some(stripped) = descriptor.strip_prefix('/') {
+                descriptor = stripped.to_string();
+            }
+
+            let Some((name, version)) = split_pnpm_descriptor(&descriptor) else {
+                current_node_id = None;
+                inside_dependencies = false;
+                continue;
+            };
+
+            let node = nodes
+                .entry(descriptor.clone())
+                .or_insert_with(|| DependencyNode {
+                    name,
+                    version,
+                    dependencies: Vec::new(),
+                });
+            current_node_id = Some(descriptor);
+            inside_dependencies = false;
+
+            if node.name.is_empty() {
+                current_node_id = None;
+            }
             continue;
-        };
-        let mut descriptor = captures[1].to_string();
-        if let Some(stripped) = descriptor.strip_prefix('/') {
-            descriptor = stripped.to_string();
         }
 
-        let Some((name, version)) = split_descriptor(&descriptor) else {
+        if line == "    dependencies:" || line == "    optionalDependencies:" {
+            inside_dependencies = true;
+            continue;
+        }
+
+        if line.starts_with("    ")
+            && !line.starts_with("      ")
+            && line.trim_end().ends_with(':')
+            && line != "    dependencies:"
+            && line != "    optionalDependencies:"
+        {
+            inside_dependencies = false;
+            continue;
+        }
+
+        if !inside_dependencies {
+            continue;
+        }
+
+        let Some(node_id) = current_node_id.as_ref() else {
             continue;
         };
-        add_version(&mut versions_by_name, &name, &version);
+        let Some((name, selector)) = parse_yaml_dependency_line(line, 6) else {
+            continue;
+        };
+        let Some(node) = nodes.get_mut(node_id) else {
+            continue;
+        };
+        let dependency = DependencyRef { name, selector };
+        if !node
+            .dependencies
+            .iter()
+            .any(|existing| existing == &dependency)
+        {
+            node.dependencies.push(dependency);
+        }
     }
 
-    versions_by_name
+    nodes
 }
 
-fn collect_from_yarn_lock(content: &str) -> VersionsByName {
-    let mut versions_by_name = BTreeMap::new();
+fn build_pnpm_adjacency(nodes: &BTreeMap<String, DependencyNode>) -> BTreeMap<String, Vec<String>> {
+    let mut descriptor_index = BTreeMap::new();
+    let mut by_name_version: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+
+    for (id, node) in nodes {
+        descriptor_index.insert(id.clone(), id.clone());
+        by_name_version
+            .entry((node.name.clone(), node.version.clone()))
+            .or_default()
+            .push(id.clone());
+    }
+
+    let mut adjacency = BTreeMap::new();
+
+    for (id, node) in nodes {
+        let mut targets: Vec<String> = Vec::new();
+
+        for dependency in &node.dependencies {
+            let Some(target_id) =
+                resolve_pnpm_dependency(dependency, &descriptor_index, &by_name_version)
+            else {
+                continue;
+            };
+
+            if !targets.iter().any(|existing| existing == &target_id) {
+                targets.push(target_id);
+            }
+        }
+
+        adjacency.insert(id.clone(), targets);
+    }
+
+    adjacency
+}
+
+fn collect_from_yarn_lock(content: &str) -> DuplicateData {
+    let nodes = parse_yarn_nodes(content);
+    let adjacency = build_yarn_adjacency(&nodes);
+    let graph_nodes = nodes
+        .into_iter()
+        .map(|(id, node)| {
+            (
+                id,
+                DependencyNode {
+                    name: node.name,
+                    version: node.version,
+                    dependencies: Vec::new(),
+                },
+            )
+        })
+        .collect();
+
+    collect_from_dependency_graph(graph_nodes, adjacency)
+}
+
+fn parse_yarn_nodes(content: &str) -> BTreeMap<String, YarnNode> {
+    let mut nodes = BTreeMap::new();
+    let mut current_descriptors: Vec<String> = Vec::new();
     let mut current_package_names: Vec<String> = Vec::new();
     let mut current_version: Option<String> = None;
+    let mut current_resolution: Option<String> = None;
+    let mut current_dependencies: Vec<DependencyRef> = Vec::new();
+    let mut inside_dependencies = false;
 
     for raw_line in content.split('\n') {
         let line = raw_line.trim_end_matches('\r');
 
         if line.trim().is_empty() {
             flush_current_yarn_entry(
-                &mut versions_by_name,
+                &mut nodes,
+                &current_descriptors,
                 &current_package_names,
                 current_version.as_deref(),
+                current_resolution.as_deref(),
+                &current_dependencies,
             );
+            current_descriptors.clear();
             current_package_names.clear();
             current_version = None;
+            current_resolution = None;
+            current_dependencies.clear();
+            inside_dependencies = false;
             continue;
         }
 
         if !line.starts_with(' ') {
             flush_current_yarn_entry(
-                &mut versions_by_name,
+                &mut nodes,
+                &current_descriptors,
                 &current_package_names,
                 current_version.as_deref(),
+                current_resolution.as_deref(),
+                &current_dependencies,
             );
-            current_package_names = parse_yarn_header(line);
+            current_descriptors = parse_yarn_header_descriptors(line);
+            current_package_names = current_descriptors
+                .iter()
+                .filter_map(|descriptor| extract_yarn_package_name(descriptor))
+                .collect();
             current_version = None;
+            current_resolution = None;
+            current_dependencies.clear();
+            inside_dependencies = false;
             continue;
+        }
+
+        if line == "  dependencies:" || line == "  optionalDependencies:" {
+            inside_dependencies = true;
+            continue;
+        }
+
+        if line.starts_with("  ")
+            && !line.starts_with("    ")
+            && line.trim_end().ends_with(':')
+            && line != "  dependencies:"
+            && line != "  optionalDependencies:"
+        {
+            inside_dependencies = false;
+        }
+
+        if inside_dependencies {
+            if let Some(dependency) = parse_yaml_dependency_line(line, 4)
+                .map(|(name, selector)| DependencyRef { name, selector })
+            {
+                if !current_dependencies
+                    .iter()
+                    .any(|existing| existing == &dependency)
+                {
+                    current_dependencies.push(dependency);
+                }
+                continue;
+            }
         }
 
         if let Some(captures) = YARN_VERSION_RE.captures(line) {
@@ -284,43 +505,221 @@ fn collect_from_yarn_lock(content: &str) -> VersionsByName {
 
         if let Some(captures) = YARN_BERRY_VERSION_RE.captures(line) {
             current_version = Some(captures[1].to_string());
+            continue;
+        }
+
+        if let Some(captures) = YARN_RESOLUTION_RE.captures(line) {
+            current_resolution = Some(normalize_yarn_descriptor(&captures[1]));
         }
     }
 
     flush_current_yarn_entry(
-        &mut versions_by_name,
+        &mut nodes,
+        &current_descriptors,
         &current_package_names,
         current_version.as_deref(),
+        current_resolution.as_deref(),
+        &current_dependencies,
     );
-    versions_by_name
+
+    nodes
 }
 
-fn parse_yarn_header(line: &str) -> Vec<String> {
+fn parse_yarn_header_descriptors(line: &str) -> Vec<String> {
     let trimmed = line.strip_suffix(':').unwrap_or(line);
 
     SPLIT_HEADER_RE
         .split(trimmed)
         .map(str::trim)
-        .map(strip_wrapping_quotes)
-        .filter_map(extract_yarn_package_name)
+        .map(normalize_yarn_descriptor)
         .collect()
 }
 
 fn flush_current_yarn_entry(
-    versions_by_name: &mut VersionsByName,
+    nodes: &mut BTreeMap<String, YarnNode>,
+    descriptors: &[String],
     package_names: &[String],
     version: Option<&str>,
+    resolution: Option<&str>,
+    dependencies: &[DependencyRef],
 ) {
     let Some(version) = version else {
         return;
     };
-    if package_names.is_empty() {
+    let Some(name) = package_names.first() else {
+        return;
+    };
+    let Some(first_descriptor) = descriptors.first() else {
+        return;
+    };
+
+    let id = resolution.unwrap_or(first_descriptor).to_string();
+    nodes.insert(
+        id,
+        YarnNode {
+            name: name.clone(),
+            version: version.to_string(),
+            dependencies: dependencies.to_vec(),
+            descriptors: descriptors.to_vec(),
+            resolution: resolution.map(str::to_string),
+        },
+    );
+}
+
+fn build_yarn_adjacency(nodes: &BTreeMap<String, YarnNode>) -> BTreeMap<String, Vec<String>> {
+    let mut descriptor_index = BTreeMap::new();
+    let mut by_name_version: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+
+    for (id, node) in nodes {
+        for descriptor in &node.descriptors {
+            descriptor_index.insert(descriptor.clone(), id.clone());
+        }
+        if let Some(resolution) = node.resolution.as_ref() {
+            descriptor_index.insert(resolution.clone(), id.clone());
+        }
+        by_name_version
+            .entry((node.name.clone(), node.version.clone()))
+            .or_default()
+            .push(id.clone());
+    }
+
+    let mut adjacency = BTreeMap::new();
+
+    for (id, node) in nodes {
+        let mut targets = Vec::new();
+
+        for dependency in &node.dependencies {
+            let Some(target_id) =
+                resolve_yarn_dependency(dependency, &descriptor_index, &by_name_version)
+            else {
+                continue;
+            };
+
+            if !targets.iter().any(|existing| existing == &target_id) {
+                targets.push(target_id);
+            }
+        }
+
+        adjacency.insert(id.clone(), targets);
+    }
+
+    adjacency
+}
+
+fn resolve_yarn_dependency(
+    dependency: &DependencyRef,
+    descriptor_index: &BTreeMap<String, String>,
+    by_name_version: &BTreeMap<(String, String), Vec<String>>,
+) -> Option<String> {
+    let selector = strip_wrapping_quotes(&dependency.selector).to_string();
+    for descriptor in yarn_dependency_lookup_keys(&dependency.name, &selector) {
+        if let Some(target_id) = descriptor_index.get(&descriptor) {
+            return Some(target_id.clone());
+        }
+    }
+
+    let normalized = selector.strip_prefix("npm:").unwrap_or(&selector);
+
+    if let Some((name, version)) = split_descriptor(normalized) {
+        return unique_candidate(by_name_version.get(&(name, version)));
+    }
+
+    unique_candidate(by_name_version.get(&(dependency.name.clone(), normalized.to_string())))
+}
+
+fn collect_from_dependency_graph(
+    nodes: BTreeMap<String, DependencyNode>,
+    adjacency: BTreeMap<String, Vec<String>>,
+) -> DuplicateData {
+    let mut data = DuplicateData::default();
+
+    for node in nodes.values() {
+        add_version(&mut data.versions_by_name, &node.name, &node.version);
+    }
+
+    if nodes.is_empty() {
+        return data;
+    }
+
+    let mut indegree = nodes
+        .keys()
+        .cloned()
+        .map(|id| (id, 0_usize))
+        .collect::<BTreeMap<_, _>>();
+
+    for targets in adjacency.values() {
+        for target in targets {
+            if let Some(count) = indegree.get_mut(target) {
+                *count += 1;
+            }
+        }
+    }
+
+    let mut roots = indegree
+        .into_iter()
+        .filter_map(|(id, count)| (count == 0).then_some(id))
+        .collect::<Vec<_>>();
+    if roots.is_empty() {
+        roots = nodes.keys().cloned().collect();
+    }
+
+    for root_id in roots {
+        let Some(root_node) = nodes.get(&root_id) else {
+            continue;
+        };
+        let mut visited = BTreeSet::new();
+        let mut path = vec![root_node.name.clone()];
+        walk_dependency_graph(
+            &root_id,
+            &nodes,
+            &adjacency,
+            &mut visited,
+            &mut path,
+            &mut data,
+        );
+    }
+
+    data
+}
+
+fn walk_dependency_graph(
+    current_id: &str,
+    nodes: &BTreeMap<String, DependencyNode>,
+    adjacency: &BTreeMap<String, Vec<String>>,
+    visited: &mut BTreeSet<String>,
+    path: &mut Vec<String>,
+    data: &mut DuplicateData,
+) {
+    let Some(current_node) = nodes.get(current_id) else {
+        return;
+    };
+    add_origin(
+        &mut data.origins_by_name,
+        &current_node.name,
+        build_duplicate_origin(&current_node.version, path),
+    );
+
+    if !visited.insert(current_id.to_string()) {
         return;
     }
 
-    for package_name in package_names {
-        add_version(versions_by_name, package_name, version);
+    if let Some(targets) = adjacency.get(current_id) {
+        for target_id in targets {
+            if visited.contains(target_id) {
+                continue;
+            }
+
+            let Some(target_node) = nodes.get(target_id) else {
+                continue;
+            };
+
+            path.push(target_node.name.clone());
+            walk_dependency_graph(target_id, nodes, adjacency, visited, path, data);
+            path.pop();
+        }
     }
+
+    visited.remove(current_id);
 }
 
 fn split_descriptor(descriptor: &str) -> Option<(String, String)> {
@@ -337,23 +736,53 @@ fn split_descriptor(descriptor: &str) -> Option<(String, String)> {
     ))
 }
 
-fn extract_yarn_package_name(descriptor: &str) -> Option<String> {
-    if let Some(captures) = YARN_ALIAS_RE.captures(descriptor) {
-        return Some(captures[1].to_string());
+fn split_pnpm_descriptor(descriptor: &str) -> Option<(String, String)> {
+    let (name, version) = split_descriptor(descriptor)?;
+
+    let Some(alias_target) = version.strip_prefix("npm:") else {
+        return Some((name, version));
+    };
+
+    if let Some((target_name, target_version)) = split_descriptor(alias_target) {
+        return Some((target_name, target_version));
     }
 
-    split_descriptor(descriptor).map(|(name, _)| name)
+    Some((name, alias_target.to_string()))
 }
 
-fn summarize_duplicates(versions_by_name: VersionsByName) -> Vec<DuplicatePackage> {
+fn extract_yarn_package_name(descriptor: &str) -> Option<String> {
+    let (name, version) = split_descriptor(descriptor.trim_start_matches('/'))?;
+
+    if let Some(alias_target) = version.strip_prefix("npm:") {
+        if let Some((target_name, _)) = split_descriptor(alias_target) {
+            return Some(target_name);
+        }
+    }
+
+    Some(name)
+}
+
+fn normalize_yarn_descriptor(value: &str) -> String {
+    strip_wrapping_quotes(value.trim())
+        .trim_start_matches('/')
+        .to_string()
+}
+
+fn summarize_duplicates(mut data: DuplicateData) -> Vec<DuplicatePackage> {
     let mut results = Vec::new();
 
-    for (name, mut versions) in versions_by_name {
+    for (name, mut versions) in data.versions_by_name {
         if versions.len() < 2 {
             continue;
         }
 
         versions.sort_by(|left, right| compare_versions(left, right));
+        let mut origins = data.origins_by_name.remove(&name).unwrap_or_default();
+        origins.sort_by(|left, right| {
+            compare_versions(&left.version, &right.version)
+                .then_with(|| left.root_requester.cmp(&right.root_requester))
+                .then_with(|| left.via_chain.cmp(&right.via_chain))
+        });
         let estimated_extra_kb = usize::max((versions.len().saturating_sub(1)) * 18, 18);
 
         results.push(DuplicatePackage {
@@ -361,6 +790,7 @@ fn summarize_duplicates(versions_by_name: VersionsByName) -> Vec<DuplicatePackag
             count: versions.len(),
             versions,
             estimated_extra_kb,
+            origins,
             finding: Default::default(),
         });
     }
@@ -374,11 +804,179 @@ fn summarize_duplicates(versions_by_name: VersionsByName) -> Vec<DuplicatePackag
     results
 }
 
+fn package_path_chain(package_path: &str) -> Vec<String> {
+    package_path
+        .split("node_modules/")
+        .skip(1)
+        .map(|segment| segment.trim_matches('/'))
+        .filter(|segment| !segment.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn build_duplicate_origin(version: &str, path: &[String]) -> DuplicateOrigin {
+    let root_requester = path.first().cloned().unwrap_or_default();
+
+    DuplicateOrigin {
+        version: version.to_string(),
+        root_requester: root_requester.clone(),
+        via_chain: via_chain_from_path(path),
+    }
+}
+
+fn via_chain_from_path(path: &[String]) -> Vec<String> {
+    if path.is_empty() {
+        return Vec::new();
+    }
+
+    let mut via_chain = if path.len() == 1 {
+        vec![path[0].clone()]
+    } else {
+        path[..path.len() - 1].to_vec()
+    };
+    via_chain.truncate(6);
+    via_chain
+}
+
+fn add_origin(origins_by_name: &mut OriginsByName, name: &str, origin: DuplicateOrigin) {
+    let origins = origins_by_name.entry(name.to_string()).or_default();
+    if !origins.iter().any(|existing| existing == &origin) {
+        origins.push(origin);
+    }
+}
+
 fn add_version(versions_by_name: &mut VersionsByName, name: &str, version: &str) {
     let versions = versions_by_name.entry(name.to_string()).or_default();
     if !versions.iter().any(|existing| existing == version) {
         versions.push(version.to_string());
     }
+}
+
+fn parse_yaml_dependency_line(line: &str, min_indent: usize) -> Option<(String, String)> {
+    let indent = line
+        .chars()
+        .take_while(|character| *character == ' ')
+        .count();
+    if indent < min_indent {
+        return None;
+    }
+
+    let trimmed = line.trim();
+    let (raw_name, raw_selector) = trimmed.split_once(':')?;
+    let name = strip_wrapping_quotes(raw_name.trim()).to_string();
+    let selector = strip_wrapping_quotes(raw_selector.trim()).to_string();
+
+    if name.is_empty() || selector.is_empty() {
+        return None;
+    }
+
+    Some((name, selector))
+}
+
+fn resolve_pnpm_dependency_target(
+    dependency_name: &str,
+    selector: &str,
+) -> Option<(String, String)> {
+    let trimmed = strip_wrapping_quotes(selector).trim();
+    let candidate = trimmed.split_whitespace().next().unwrap_or_default();
+    if candidate.is_empty()
+        || candidate.starts_with("link:")
+        || candidate.starts_with("file:")
+        || candidate.starts_with("workspace:")
+    {
+        return None;
+    }
+
+    let normalized = candidate
+        .split('(')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches(',')
+        .trim();
+
+    if let Some(alias_target) = normalized.strip_prefix("npm:") {
+        if let Some((name, version)) = split_descriptor(alias_target) {
+            return Some((name, version));
+        }
+
+        return Some((dependency_name.to_string(), alias_target.to_string()));
+    }
+
+    Some((dependency_name.to_string(), normalized.to_string()))
+}
+
+fn resolve_pnpm_dependency(
+    dependency: &DependencyRef,
+    descriptor_index: &BTreeMap<String, String>,
+    by_name_version: &BTreeMap<(String, String), Vec<String>>,
+) -> Option<String> {
+    let selector = strip_wrapping_quotes(&dependency.selector).trim();
+    let candidate = selector
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches(',')
+        .trim();
+    if candidate.is_empty()
+        || candidate.starts_with("link:")
+        || candidate.starts_with("file:")
+        || candidate.starts_with("workspace:")
+    {
+        return None;
+    }
+
+    for descriptor in pnpm_dependency_lookup_keys(&dependency.name, candidate) {
+        if let Some(target_id) = descriptor_index.get(&descriptor) {
+            return Some(target_id.clone());
+        }
+    }
+
+    let (resolved_name, resolved_version) =
+        resolve_pnpm_dependency_target(&dependency.name, candidate)?;
+
+    unique_candidate(by_name_version.get(&(resolved_name, resolved_version)))
+}
+
+fn pnpm_dependency_lookup_keys(dependency_name: &str, selector: &str) -> Vec<String> {
+    let mut keys = vec![format!("{dependency_name}@{selector}")];
+
+    if let Some(alias_target) = selector.strip_prefix("npm:") {
+        keys.push(alias_target.to_string());
+    }
+
+    dedupe_strings(keys)
+}
+
+fn yarn_dependency_lookup_keys(dependency_name: &str, selector: &str) -> Vec<String> {
+    let mut keys = vec![
+        format!("{dependency_name}@{selector}"),
+        selector.to_string(),
+    ];
+
+    if !selector.starts_with("npm:") {
+        keys.push(format!("{dependency_name}@npm:{selector}"));
+        keys.push(format!("npm:{selector}"));
+    }
+
+    dedupe_strings(keys)
+}
+
+fn unique_candidate(candidates: Option<&Vec<String>>) -> Option<String> {
+    let candidates = candidates?;
+
+    (candidates.len() == 1).then(|| candidates[0].clone())
+}
+
+fn dedupe_strings(values: Vec<String>) -> Vec<String> {
+    let mut unique = Vec::new();
+
+    for value in values {
+        if !unique.iter().any(|existing| existing == &value) {
+            unique.push(value);
+        }
+    }
+
+    unique
 }
 
 fn compare_versions(left: &str, right: &str) -> Ordering {

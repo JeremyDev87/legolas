@@ -1,0 +1,39 @@
+"app-shell@npm:^1.0.0":
+  version: "1.0.0"
+  resolution: "app-shell@npm:1.0.0"
+  dependencies:
+    widget-core: "1.0.0(peer-a@npm:1.0.0)"
+
+"admin-shell@npm:^1.0.0":
+  version: "1.0.0"
+  resolution: "admin-shell@npm:1.0.0"
+  dependencies:
+    widget-core: "1.0.0(peer-b@npm:1.0.0)"
+
+"widget-core@npm:1.0.0(peer-a@npm:1.0.0)":
+  version: "1.0.0"
+  resolution: "widget-core@npm:1.0.0(peer-a@npm:1.0.0)"
+  dependencies:
+    shared-lib: "1.0.0"
+
+"widget-core@npm:1.0.0(peer-b@npm:1.0.0)":
+  version: "1.0.0"
+  resolution: "widget-core@npm:1.0.0(peer-b@npm:1.0.0)"
+  dependencies:
+    shared-lib: "2.0.0"
+
+"shared-lib@npm:1.0.0":
+  version: "1.0.0"
+  resolution: "shared-lib@npm:1.0.0"
+
+"shared-lib@npm:2.0.0":
+  version: "2.0.0"
+  resolution: "shared-lib@npm:2.0.0"
+
+"peer-a@npm:1.0.0":
+  version: "1.0.0"
+  resolution: "peer-a@npm:1.0.0"
+
+"peer-b@npm:1.0.0":
+  version: "1.0.0"
+  resolution: "peer-b@npm:1.0.0"
