@@ -1,0 +1,32 @@
+{
+  "inputs": {
+    "src/main.ts": {
+      "bytes": 1200
+    },
+    "node_modules/react/index.js": {
+      "bytes": 5400
+    }
+  },
+  "outputs": {
+    "dist/main.js": {
+      "bytes": 8200,
+      "entryPoint": "src/main.ts",
+      "inputs": {
+        "src/main.ts": {
+          "bytesInOutput": 1200
+        },
+        "node_modules/react/index.js": {
+          "bytesInOutput": 3200
+        }
+      }
+    },
+    "dist/vendor.js": {
+      "bytes": 5000,
+      "inputs": {
+        "node_modules/react/index.js": {
+          "bytesInOutput": 2200
+        }
+      }
+    }
+  }
+}

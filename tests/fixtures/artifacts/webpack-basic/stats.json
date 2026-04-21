@@ -1,0 +1,38 @@
+{
+  "entryPoints": {
+    "main": {
+      "assets": [
+        { "name": "main.js" },
+        { "name": "vendors.js" }
+      ]
+    }
+  },
+  "chunks": [
+    {
+      "id": 1,
+      "names": ["main"],
+      "files": ["main.js"],
+      "initial": true,
+      "size": 9000,
+      "modules": [
+        {
+          "identifier": "src/index.tsx",
+          "size": 1400
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "names": ["vendors"],
+      "files": ["vendors.js"],
+      "initial": true,
+      "size": 5000,
+      "modules": [
+        {
+          "identifier": "node_modules/react/index.js",
+          "size": 4500
+        }
+      ]
+    }
+  ]
+}
