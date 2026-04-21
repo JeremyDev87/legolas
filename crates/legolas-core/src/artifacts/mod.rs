@@ -2,9 +2,13 @@ pub mod models;
 
 pub mod detect;
 pub mod esbuild;
+pub mod merge;
 pub mod rollup;
 pub mod webpack;
 
+pub use merge::{
+    merge_artifact_source_signals, ArtifactChunkSignal, ArtifactSignalKind, ArtifactSourceSignal,
+};
 pub use models::{ArtifactChunk, ArtifactModuleContribution, ArtifactSummary};
 
 pub(crate) fn package_name_from_module_id(module_id: &str) -> Option<String> {

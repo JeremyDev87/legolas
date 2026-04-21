@@ -1,0 +1,45 @@
+{
+  "entryPoints": {
+    "dashboard": {
+      "assets": [
+        { "name": "dist/admin.js" },
+        { "name": "dist/vendor.js" }
+      ]
+    }
+  },
+  "chunks": [
+    {
+      "id": 1,
+      "names": ["admin"],
+      "files": ["dist/admin.css", "dist/admin.js", "dist/admin.js.map"],
+      "initial": true,
+      "size": 8200,
+      "modules": [
+        {
+          "identifier": "src/AdminPage.tsx",
+          "name": "src/AdminPage.tsx",
+          "size": 1400
+        },
+        {
+          "identifier": "node_modules/chart.js/dist/chart.js",
+          "name": "node_modules/chart.js/dist/chart.js",
+          "size": 6200
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "names": ["vendor"],
+      "files": ["dist/vendor.css", "dist/vendor.js", "dist/vendor.js.map"],
+      "initial": true,
+      "size": 6100,
+      "modules": [
+        {
+          "identifier": "node_modules/lodash/lodash.js",
+          "name": "node_modules/lodash/lodash.js",
+          "size": 5100
+        }
+      ]
+    }
+  ]
+}
