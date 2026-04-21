@@ -25,6 +25,7 @@ use crate::{
     },
     package_intelligence::get_package_intel,
     project_shape::{detect_frameworks, detect_package_manager},
+    route_context::{classify_route_context, RouteContextKind},
     workspace::{find_project_root, load_alias_config, read_json_if_exists},
     LegolasError,
 };
@@ -59,7 +60,12 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
     let mut duplicate_analysis = parse_duplicate_packages(&project_root, &package_manager)?;
     enrich_duplicate_package_findings(&mut duplicate_analysis.duplicates);
     let heavy_dependencies = build_heavy_dependency_report(&manifest, &source_analysis);
-    let lazy_load_candidates = build_lazy_load_candidates(&source_analysis, &heavy_dependencies);
+    let lazy_load_candidates = build_lazy_load_candidates(
+        &project_root,
+        &frameworks,
+        &source_analysis,
+        &heavy_dependencies,
+    );
     let tree_shaking_warnings = build_tree_shaking_warnings(&source_analysis);
     let bundle_artifacts = detect_bundle_artifacts(&project_root)?;
     let impact = estimate_impact(
@@ -187,6 +193,8 @@ fn merged_dependency_entries(manifest: &Value) -> Vec<(String, String)> {
 }
 
 fn build_lazy_load_candidates(
+    project_root: &Path,
+    frameworks: &[String],
     source_analysis: &SourceAnalysis,
     heavy_dependencies: &[HeavyDependency],
 ) -> Vec<LazyLoadCandidate> {
@@ -201,28 +209,72 @@ fn build_lazy_load_candidates(
             continue;
         };
 
-        let split_friendly_files = imported_package
+        let classified_static_files = imported_package
             .static_files
             .iter()
-            .filter(|file| CANDIDATE_FILES_PATTERN.is_match(file))
-            .cloned()
+            .map(|file| {
+                (
+                    file.clone(),
+                    classify_route_context(project_root, frameworks, Path::new(file)),
+                )
+            })
             .collect::<Vec<_>>();
+        let route_context_files = classified_static_files
+            .iter()
+            .filter(|(_, route_kind)| is_lazy_load_route_context(*route_kind))
+            .map(|(file, route_kind)| (file.clone(), *route_kind))
+            .collect::<Vec<_>>();
+        let has_shared_component_import = classified_static_files
+            .iter()
+            .any(|(_, route_kind)| *route_kind == RouteContextKind::SharedComponent);
+        let heuristic_files = classified_static_files
+            .iter()
+            .filter(|(file, route_kind)| {
+                *route_kind != RouteContextKind::SharedComponent
+                    && CANDIDATE_FILES_PATTERN.is_match(file)
+            })
+            .map(|(file, _)| file.clone())
+            .collect::<Vec<_>>();
+
+        if !route_context_files.is_empty() && has_shared_component_import {
+            continue;
+        }
+
+        let split_friendly_files = if route_context_files.is_empty() {
+            heuristic_files.clone()
+        } else {
+            route_context_files
+                .iter()
+                .map(|(file, _)| file.clone())
+                .collect::<Vec<_>>()
+        };
 
         if split_friendly_files.is_empty() || !imported_package.dynamic_files.is_empty() {
             continue;
         }
 
-        let evidence_files = split_friendly_files.clone();
+        let reason = if route_context_files.is_empty() {
+            format!(
+                "{} is statically imported in UI surfaces that usually tolerate lazy loading",
+                imported_package.name
+            )
+        } else {
+            format!(
+                "{} is statically imported in route-aware UI surfaces that usually tolerate lazy loading",
+                imported_package.name
+            )
+        };
         candidates.push(LazyLoadCandidate {
             name: imported_package.name.clone(),
             estimated_savings_kb: (heavy.estimated_kb as f64 * 0.75).round() as usize,
             recommendation: heavy.recommendation.clone(),
             files: split_friendly_files,
-            reason: format!(
-                "{} is statically imported in UI surfaces that usually tolerate lazy loading",
-                imported_package.name
+            reason,
+            finding: build_lazy_load_finding(
+                &imported_package.name,
+                &heuristic_files,
+                &route_context_files,
             ),
-            finding: build_lazy_load_finding(&imported_package.name, &evidence_files),
         });
     }
 
@@ -289,16 +341,32 @@ fn build_heavy_dependency_finding(
         .with_evidence(evidence)
 }
 
-fn build_lazy_load_finding(package_name: &str, files: &[String]) -> FindingMetadata {
-    let evidence = files
-        .iter()
-        .map(|file| {
-            FindingEvidence::new("source-file")
-                .with_file(file.clone())
-                .with_specifier(package_name.to_string())
-                .with_detail(lazy_load_surface_detail(file))
-        })
-        .collect::<Vec<_>>();
+fn build_lazy_load_finding(
+    package_name: &str,
+    heuristic_files: &[String],
+    route_context_files: &[(String, RouteContextKind)],
+) -> FindingMetadata {
+    let evidence = if route_context_files.is_empty() {
+        heuristic_files
+            .iter()
+            .map(|file| {
+                FindingEvidence::new("source-file")
+                    .with_file(file.clone())
+                    .with_specifier(package_name.to_string())
+                    .with_detail(lazy_load_surface_detail(file))
+            })
+            .collect::<Vec<_>>()
+    } else {
+        route_context_files
+            .iter()
+            .map(|(file, route_kind)| {
+                FindingEvidence::new("source-file")
+                    .with_file(file.clone())
+                    .with_specifier(package_name.to_string())
+                    .with_detail(route_context_surface_detail(*route_kind))
+            })
+            .collect::<Vec<_>>()
+    };
 
     FindingMetadata::new(
         format!("lazy-load:{package_name}"),
@@ -320,6 +388,27 @@ fn lazy_load_surface_detail(file: &str) -> String {
             )
         })
         .unwrap_or_else(|| "route-like UI surface heuristic".to_string())
+}
+
+fn route_context_surface_detail(route_kind: RouteContextKind) -> String {
+    let label = match route_kind {
+        RouteContextKind::RoutePage => "route-page",
+        RouteContextKind::RouteLayout => "route-layout",
+        RouteContextKind::AdminSurface => "admin-surface",
+        RouteContextKind::SharedComponent => "shared-component",
+        RouteContextKind::NonRoute => "non-route",
+    };
+
+    format!("route context classified `{label}`")
+}
+
+fn is_lazy_load_route_context(route_kind: RouteContextKind) -> bool {
+    matches!(
+        route_kind,
+        RouteContextKind::RoutePage
+            | RouteContextKind::RouteLayout
+            | RouteContextKind::AdminSurface
+    )
 }
 
 fn build_unused_dependency_candidates(

@@ -13,6 +13,7 @@ pub mod lockfiles;
 pub mod models;
 pub mod package_intelligence;
 pub mod project_shape;
+pub mod route_context;
 pub mod workspace;
 
 pub use action_plan::*;
