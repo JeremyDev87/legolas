@@ -106,6 +106,62 @@ fn matches_scan_json_oracle() {
 }
 
 #[test]
+fn normalize_analysis_json_output_normalizes_artifact_summary_paths() {
+    let normalized = support::normalize_analysis_json_output(
+        r#"{
+  "projectRoot": "C:\\repo",
+  "bundleArtifacts": ["dist\\stats.json"],
+  "artifactSummary": {
+    "bundler": "webpack",
+    "entrypoints": ["src\\main.ts"],
+    "chunks": [
+      {
+        "name": "main",
+        "entrypoints": ["src\\main.ts"],
+        "files": ["dist\\main.js"],
+        "initial": true,
+        "bytes": 9000
+      }
+    ],
+    "modules": [
+      {
+        "id": "src\\main.ts",
+        "packageName": null,
+        "chunks": ["main"],
+        "bytes": 1400
+      }
+    ],
+    "totalBytes": 9000
+  },
+  "packageSummary": {"name":"demo","dependencyCount":0,"devDependencyCount":0},
+  "sourceSummary": {"filesScanned":0,"importedPackages":0,"dynamicImports":0},
+  "heavyDependencies": [],
+  "duplicatePackages": [],
+  "lazyLoadCandidates": [],
+  "treeShakingWarnings": [],
+  "unusedDependencyCandidates": [],
+  "warnings": [],
+  "impact": {"potentialKbSaved":0,"estimatedLcpImprovementMs":0,"confidence":"directional","summary":"n/a"},
+  "metadata": {"mode":"artifact-assisted","generatedAt":"2026-01-01T00:00:00.000Z"}
+}"#,
+    );
+
+    assert_eq!(normalized["bundleArtifacts"][0], "dist/stats.json");
+    assert_eq!(
+        normalized["artifactSummary"]["entrypoints"][0],
+        "src/main.ts"
+    );
+    assert_eq!(
+        normalized["artifactSummary"]["chunks"][0]["files"][0],
+        "dist/main.js"
+    );
+    assert_eq!(
+        normalized["artifactSummary"]["modules"][0]["id"],
+        "src/main.ts"
+    );
+}
+
+#[test]
 fn matches_validation_error_oracles() {
     let fixture = support::fixture_path("tests/fixtures/parity/basic-app");
     let cases = [

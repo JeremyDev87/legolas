@@ -11,6 +11,7 @@ use serde_json::Value;
 
 use crate::{
     action_plan::apply_action_plan,
+    artifacts::{detect::parse_artifact_file, detect::KNOWN_ARTIFACT_FILES, ArtifactSummary},
     confidence::{score_duplicate_package, score_heavy_dependency, score_lazy_load_candidate},
     error::Result,
     findings::{FindingAnalysisSource, FindingEvidence, FindingMetadata},
@@ -34,14 +35,6 @@ static CANDIDATE_FILES_PATTERN: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(modal|chart|editor|map|viewer|dashboard|settings|admin|page|route|dialog|drawer|popover)")
         .expect("valid candidate files regex")
 });
-
-const KNOWN_BUNDLE_ARTIFACTS: [&str; 5] = [
-    "stats.json",
-    "dist/stats.json",
-    "build/stats.json",
-    "meta.json",
-    "dist/meta.json",
-];
 
 pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
     let project_root = find_project_root(input_path)?;
@@ -67,7 +60,7 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
         &heavy_dependencies,
     );
     let tree_shaking_warnings = build_tree_shaking_warnings(&source_analysis);
-    let bundle_artifacts = detect_bundle_artifacts(&project_root)?;
+    let artifact_assist = collect_artifact_assist(&project_root)?;
     let impact = estimate_impact(
         &heavy_dependencies,
         &duplicate_analysis.duplicates,
@@ -79,7 +72,8 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
         project_root: project_root.to_string_lossy().to_string(),
         package_manager,
         frameworks,
-        bundle_artifacts: bundle_artifacts.clone(),
+        bundle_artifacts: artifact_assist.bundle_artifacts.clone(),
+        artifact_summary: artifact_assist.artifact_summary.clone(),
         package_summary: build_package_summary(&manifest),
         source_summary: SourceSummary {
             files_scanned: source_files.len(),
@@ -94,10 +88,10 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
             &manifest,
             &source_analysis,
         ),
-        warnings: duplicate_analysis.warnings,
+        warnings: merge_warnings(duplicate_analysis.warnings, artifact_assist.warnings),
         impact,
         metadata: Metadata {
-            mode: if bundle_artifacts.is_empty() {
+            mode: if artifact_assist.artifact_summary.is_none() {
                 "heuristic".to_string()
             } else {
                 "artifact-assisted".to_string()
@@ -443,19 +437,72 @@ fn build_unused_dependency_candidates(
     candidates
 }
 
-fn detect_bundle_artifacts(project_root: &Path) -> Result<Vec<String>> {
-    let mut detected = Vec::new();
+#[derive(Debug, Default)]
+struct ArtifactAssist {
+    bundle_artifacts: Vec<String>,
+    artifact_summary: Option<ArtifactSummary>,
+    warnings: Vec<String>,
+}
 
-    for relative_path in KNOWN_BUNDLE_ARTIFACTS {
+#[derive(Debug)]
+struct ParsedArtifactCandidate {
+    relative_path: String,
+    modified_at: SystemTime,
+    summary: ArtifactSummary,
+}
+
+fn collect_artifact_assist(project_root: &Path) -> Result<ArtifactAssist> {
+    let mut assist = ArtifactAssist::default();
+    let mut parsed_candidates = Vec::new();
+
+    for relative_path in KNOWN_ARTIFACT_FILES {
         let absolute_path = project_root.join(relative_path);
-        if let Ok(metadata) = fs::metadata(&absolute_path) {
-            if metadata.is_file() {
-                detected.push(relative_path.to_string());
-            }
+        let Ok(metadata) = fs::metadata(&absolute_path) else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+
+        assist.bundle_artifacts.push(relative_path.to_string());
+
+        match parse_artifact_file(&absolute_path) {
+            Ok(summary) => parsed_candidates.push(ParsedArtifactCandidate {
+                relative_path: relative_path.to_string(),
+                modified_at: metadata.modified().unwrap_or(UNIX_EPOCH),
+                summary: summary.normalized(),
+            }),
+            Err(error) => assist.warnings.push(format!(
+                "Bundle artifact `{relative_path}` could not be parsed: {error}"
+            )),
         }
     }
 
-    Ok(detected)
+    if let Some(selected) = select_artifact_summary(&parsed_candidates) {
+        if parsed_candidates.len() > 1 {
+            assist.warnings.push(format!(
+                "Multiple bundle artifacts were parsed; artifactSummary selected `{}` by latest modification time.",
+                selected.relative_path
+            ));
+        }
+        assist.artifact_summary = Some(selected.summary.clone());
+    }
+
+    Ok(assist)
+}
+
+fn select_artifact_summary(
+    candidates: &[ParsedArtifactCandidate],
+) -> Option<&ParsedArtifactCandidate> {
+    candidates.iter().max_by(|left, right| {
+        left.modified_at
+            .cmp(&right.modified_at)
+            .then_with(|| right.relative_path.cmp(&left.relative_path))
+    })
+}
+
+fn merge_warnings(primary: Vec<String>, secondary: Vec<String>) -> Vec<String> {
+    primary.into_iter().chain(secondary).collect()
 }
 
 fn generated_at_string() -> String {

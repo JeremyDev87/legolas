@@ -1,13 +1,19 @@
 mod support;
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, thread, time::Duration};
 
 #[cfg(unix)]
 use std::os::unix::fs::symlink as create_dir_symlink;
 #[cfg(windows)]
 use std::os::windows::fs::symlink_dir as create_dir_symlink;
 
-use legolas_core::{analyze_project, LegolasError};
+use legolas_core::{
+    analyze_project,
+    artifacts::{
+        detect::parse_artifact_file, ArtifactChunk, ArtifactModuleContribution, ArtifactSummary,
+    },
+    Analysis, LegolasError,
+};
 use regex::Regex;
 use tempfile::tempdir;
 
@@ -71,7 +77,38 @@ fn analyze_project_emits_relative_evidence_blocks_in_parity_fixture() {
 }
 
 #[test]
-fn analyze_project_switches_to_artifact_assisted_mode_only_for_real_files() {
+fn normalize_analysis_for_oracle_normalizes_artifact_summary_paths() {
+    let normalized = support::normalize_analysis_for_oracle(&Analysis {
+        project_root: r"C:\repo".to_string(),
+        bundle_artifacts: vec![r"dist\stats.json".to_string()],
+        artifact_summary: Some(ArtifactSummary {
+            bundler: "webpack".to_string(),
+            entrypoints: vec![r"src\main.ts".to_string()],
+            chunks: vec![ArtifactChunk {
+                name: "main".to_string(),
+                entrypoints: vec![r"src\main.ts".to_string()],
+                files: vec![r"dist\main.js".to_string()],
+                initial: true,
+                bytes: 9_000,
+            }],
+            modules: vec![ArtifactModuleContribution {
+                id: r"src\main.ts".to_string(),
+                package_name: None,
+                chunks: vec!["main".to_string()],
+                bytes: 1_400,
+            }],
+            total_bytes: 9_000,
+        }),
+        ..Analysis::default()
+    });
+
+    assert!(normalized.contains("\"dist/main.js\""));
+    assert!(normalized.contains("\"src/main.ts\""));
+    assert!(!normalized.contains('\\'));
+}
+
+#[test]
+fn analyze_project_uses_parsed_artifact_summary_for_real_bundle_artifacts() {
     let temp = tempdir().expect("create temp dir");
     let root = temp.path();
 
@@ -86,15 +123,139 @@ fn analyze_project_switches_to_artifact_assisted_mode_only_for_real_files() {
 }"#,
     );
     write_file(root, "src/App.ts", "export const App = () => null;\n");
-    write_file(root, "dist/stats.json", "{}\n");
+    write_file(
+        root,
+        "dist/stats.json",
+        include_str!("../../../tests/fixtures/artifacts/webpack-basic/stats.json"),
+    );
 
     let analysis = analyze_project(root).expect("analyze project");
+    let expected_summary = parse_artifact_file(&support::fixture_path(
+        "tests/fixtures/artifacts/webpack-basic/stats.json",
+    ))
+    .expect("parse artifact fixture")
+    .normalized();
 
     assert_eq!(analysis.metadata.mode, "artifact-assisted");
     assert_eq!(
         analysis.bundle_artifacts,
         vec!["dist/stats.json".to_string()]
     );
+    assert_eq!(analysis.artifact_summary, Some(expected_summary));
+    assert!(analysis.warnings.is_empty());
+}
+
+#[test]
+fn analyze_project_prefers_the_latest_parsed_bundle_artifact_when_multiple_exist() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "multi-artifact-app",
+  "dependencies": {
+    "lodash": "^4.17.21"
+  }
+}"#,
+    );
+    write_file(root, "src/App.ts", "export const App = () => null;\n");
+    write_file(
+        root,
+        "dist/stats.json",
+        include_str!("../../../tests/fixtures/artifacts/webpack-basic/stats.json"),
+    );
+    thread::sleep(Duration::from_millis(1100));
+    write_file(
+        root,
+        "dist/meta.json",
+        include_str!("../../../tests/fixtures/artifacts/esbuild-basic/meta.json"),
+    );
+
+    let analysis = analyze_project(root).expect("analyze project");
+    let expected_summary = parse_artifact_file(&support::fixture_path(
+        "tests/fixtures/artifacts/esbuild-basic/meta.json",
+    ))
+    .expect("parse artifact fixture")
+    .normalized();
+
+    assert_eq!(analysis.metadata.mode, "artifact-assisted");
+    assert_eq!(
+        analysis.bundle_artifacts,
+        vec!["dist/stats.json".to_string(), "dist/meta.json".to_string()]
+    );
+    assert_eq!(analysis.artifact_summary, Some(expected_summary));
+    assert_eq!(
+        analysis.warnings,
+        vec![
+            "Multiple bundle artifacts were parsed; artifactSummary selected `dist/meta.json` by latest modification time.".to_string()
+        ]
+    );
+}
+
+#[test]
+fn analyze_project_falls_back_to_heuristic_mode_when_known_artifact_shape_is_unsupported() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "unsupported-artifact-app",
+  "dependencies": {
+    "lodash": "^4.17.21"
+  }
+}"#,
+    );
+    write_file(root, "src/App.ts", "export const App = () => null;\n");
+    write_file(root, "dist/stats.json", "{}\n");
+
+    let analysis = analyze_project(root).expect("analyze project");
+
+    assert_eq!(analysis.metadata.mode, "heuristic");
+    assert_eq!(
+        analysis.bundle_artifacts,
+        vec!["dist/stats.json".to_string()]
+    );
+    assert!(analysis.artifact_summary.is_none());
+    assert_eq!(
+        analysis.warnings,
+        vec![
+            "Bundle artifact `dist/stats.json` could not be parsed: not implemented: unsupported artifact file shape".to_string()
+        ]
+    );
+}
+
+#[test]
+fn analyze_project_falls_back_to_heuristic_mode_when_known_artifact_json_is_malformed() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "package.json",
+        r#"{
+  "name": "malformed-artifact-app",
+  "dependencies": {
+    "lodash": "^4.17.21"
+  }
+}"#,
+    );
+    write_file(root, "src/App.ts", "export const App = () => null;\n");
+    write_file(root, "dist/stats.json", "{\n");
+
+    let analysis = analyze_project(root).expect("analyze project");
+
+    assert_eq!(analysis.metadata.mode, "heuristic");
+    assert_eq!(
+        analysis.bundle_artifacts,
+        vec!["dist/stats.json".to_string()]
+    );
+    assert!(analysis.artifact_summary.is_none());
+    assert_eq!(analysis.warnings.len(), 1);
+    assert!(analysis.warnings[0].contains("Bundle artifact `dist/stats.json` could not be parsed:"));
 }
 
 #[test]

@@ -32,6 +32,7 @@ pub fn normalize_analysis_for_oracle(analysis: &Analysis) -> String {
         .into_iter()
         .map(to_posix)
         .collect();
+    normalized.artifact_summary = normalized.artifact_summary.map(normalize_artifact_summary);
     normalized.heavy_dependencies = normalized
         .heavy_dependencies
         .into_iter()
@@ -103,4 +104,29 @@ fn normalize_recommended_fix_files(finding: &mut legolas_core::FindingMetadata) 
         .drain(..)
         .map(to_posix)
         .collect();
+}
+
+fn normalize_artifact_summary(
+    mut summary: legolas_core::artifacts::ArtifactSummary,
+) -> legolas_core::artifacts::ArtifactSummary {
+    summary.entrypoints = summary.entrypoints.into_iter().map(to_posix).collect();
+    summary.chunks = summary
+        .chunks
+        .into_iter()
+        .map(|mut chunk| {
+            chunk.entrypoints = chunk.entrypoints.into_iter().map(to_posix).collect();
+            chunk.files = chunk.files.into_iter().map(to_posix).collect();
+            chunk
+        })
+        .collect();
+    summary.modules = summary
+        .modules
+        .into_iter()
+        .map(|mut module| {
+            module.id = to_posix(module.id);
+            module
+        })
+        .collect();
+
+    summary
 }
