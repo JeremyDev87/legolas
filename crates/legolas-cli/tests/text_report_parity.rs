@@ -4,8 +4,8 @@ use legolas_cli::reporters::text::{
     format_optimize_report, format_scan_report, format_visualization_report,
 };
 use legolas_core::{
-    Analysis, DuplicatePackage, HeavyDependency, Impact, LazyLoadCandidate, Metadata,
-    PackageSummary, SourceSummary,
+    Analysis, DuplicatePackage, FindingAnalysisSource, FindingEvidence, FindingMetadata,
+    HeavyDependency, Impact, LazyLoadCandidate, Metadata, PackageSummary, SourceSummary,
 };
 
 fn load_analysis() -> Analysis {
@@ -29,6 +29,70 @@ fn matches_scan_visualize_and_optimize_oracles() {
         format_optimize_report(&analysis, 5),
         "basic-app/optimize.txt",
     );
+}
+
+#[test]
+fn scan_and_optimize_reports_render_compact_evidence_lines() {
+    let analysis = load_analysis();
+
+    let scan = format_scan_report(&analysis);
+    assert!(scan.contains(
+        "  evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens."
+    ));
+    assert!(
+        scan.contains("  evidence: src/Dashboard.tsx | specifier: lodash | root package import")
+    );
+
+    let optimize = format_optimize_report(&analysis, 5);
+    assert!(optimize.contains(
+        "1. Review chart.js: Register only the chart primitives you use and lazy load dashboard surfaces.\n   evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens."
+    ));
+    assert!(optimize.contains(
+        "5. Lazy load chart.js in src/Dashboard.tsx to target roughly 120 KB of deferred code.\n   evidence: src/Dashboard.tsx | specifier: chart.js | route-like UI surface matched `dashboard` keyword"
+    ));
+}
+
+#[test]
+fn scan_and_optimize_reports_only_render_the_first_evidence_line_per_finding() {
+    let mut analysis = base_analysis("multi-evidence-app");
+    analysis.heavy_dependencies = vec![HeavyDependency {
+        name: "chart.js".to_string(),
+        estimated_kb: 160,
+        rationale: "Charting code is often only needed on a subset of screens.".to_string(),
+        recommendation:
+            "Register only the chart primitives you use and lazy load dashboard surfaces."
+                .to_string(),
+        imported_by: vec!["src/Admin.tsx".to_string(), "src/Reports.tsx".to_string()],
+        finding: FindingMetadata::new(
+            "heavy-dependency:chart.js",
+            FindingAnalysisSource::SourceImport,
+        )
+        .with_evidence([
+            FindingEvidence::new("source-file")
+                .with_file("src/Admin.tsx")
+                .with_specifier("chart.js")
+                .with_detail("first evidence detail"),
+            FindingEvidence::new("source-file")
+                .with_file("src/Reports.tsx")
+                .with_specifier("chart.js")
+                .with_detail("second evidence detail"),
+        ]),
+        ..HeavyDependency::default()
+    }];
+
+    let scan = format_scan_report(&analysis);
+    assert!(
+        scan.contains("  evidence: src/Admin.tsx | specifier: chart.js | first evidence detail")
+    );
+    assert!(!scan.contains("second evidence detail"));
+
+    let optimize = format_optimize_report(&analysis, 1);
+    assert!(
+        optimize.contains(
+            "1. Review chart.js: Register only the chart primitives you use and lazy load dashboard surfaces.\n   evidence: src/Admin.tsx | specifier: chart.js | first evidence detail"
+        )
+    );
+    assert!(!optimize.contains("second evidence detail"));
 }
 
 #[test]

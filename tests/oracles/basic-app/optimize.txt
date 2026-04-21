@@ -1,9 +1,13 @@
 Legolas optimize for basic-parity-app
 
 1. Review chart.js: Register only the chart primitives you use and lazy load dashboard surfaces.
+   evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
 2. Review react-icons: Import narrowly from specific icon files or migrate to a more tree-shakable icon set.
+   evidence: src/Dashboard.tsx | specifier: react-icons | static import; Wide icon-pack imports can defeat tree shaking.
 3. Review lodash: Use per-method imports or switch to lodash-es when the toolchain supports it.
+   evidence: src/Dashboard.tsx | specifier: lodash | static import; Root lodash imports are a classic source of tree-shaking misses.
 4. Deduplicate lodash versions (4.17.20, 4.17.21) to recover roughly 18 KB.
 5. Lazy load chart.js in src/Dashboard.tsx to target roughly 120 KB of deferred code.
+   evidence: src/Dashboard.tsx | specifier: chart.js | route-like UI surface matched `dashboard` keyword
 
 Projected savings: ~366 KB, with directional confidence.

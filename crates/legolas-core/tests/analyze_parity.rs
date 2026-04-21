@@ -22,6 +22,55 @@ fn analyze_project_matches_the_parity_oracle() {
 }
 
 #[test]
+fn analyze_project_emits_relative_evidence_blocks_in_parity_fixture() {
+    let analysis = analyze_project(support::fixture_path("tests/fixtures/parity/basic-app"))
+        .expect("analyze parity fixture");
+
+    let heavy = analysis
+        .heavy_dependencies
+        .iter()
+        .find(|item| item.name == "chart.js")
+        .expect("chart.js heavy dependency");
+    let heavy_evidence = heavy.finding.evidence.first().expect("heavy evidence");
+    assert_eq!(heavy_evidence.file.as_deref(), Some("src/Dashboard.tsx"));
+    assert_eq!(heavy_evidence.specifier.as_deref(), Some("chart.js"));
+    assert_eq!(
+        heavy_evidence.detail.as_deref(),
+        Some("static import; Charting code is often only needed on a subset of screens.")
+    );
+
+    let lazy = analysis
+        .lazy_load_candidates
+        .iter()
+        .find(|item| item.name == "chart.js")
+        .expect("chart.js lazy-load candidate");
+    let lazy_evidence = lazy.finding.evidence.first().expect("lazy-load evidence");
+    assert_eq!(lazy_evidence.file.as_deref(), Some("src/Dashboard.tsx"));
+    assert_eq!(lazy_evidence.specifier.as_deref(), Some("chart.js"));
+    assert_eq!(
+        lazy_evidence.detail.as_deref(),
+        Some("route-like UI surface matched `dashboard` keyword")
+    );
+
+    let warning = analysis
+        .tree_shaking_warnings
+        .iter()
+        .find(|item| item.key == "lodash-root-import")
+        .expect("lodash tree-shaking warning");
+    let warning_evidence = warning
+        .finding
+        .evidence
+        .first()
+        .expect("tree-shaking evidence");
+    assert_eq!(warning_evidence.file.as_deref(), Some("src/Dashboard.tsx"));
+    assert_eq!(warning_evidence.specifier.as_deref(), Some("lodash"));
+    assert_eq!(
+        warning_evidence.detail.as_deref(),
+        Some("root package import")
+    );
+}
+
+#[test]
 fn analyze_project_switches_to_artifact_assisted_mode_only_for_real_files() {
     let temp = tempdir().expect("create temp dir");
     let root = temp.path();
