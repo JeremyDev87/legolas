@@ -1,0 +1,6 @@
+{
+  "name": "boundary-general-app",
+  "dependencies": {
+    "react": "^19.0.0"
+  }
+}
