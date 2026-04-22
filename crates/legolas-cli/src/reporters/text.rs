@@ -284,7 +284,7 @@ struct BarItem {
 struct ActionLine {
     headline: String,
     details: Vec<String>,
-    evidence: Option<String>,
+    evidence: Vec<String>,
 }
 
 fn build_actions(analysis: &Analysis) -> Vec<ActionLine> {
@@ -314,7 +314,9 @@ fn build_ranked_actions(analysis: &Analysis) -> Vec<ActionLine> {
                     action.estimated_savings_kb
                 ),
                 details: recommended_fix_details(action.recommended_fix.as_ref()),
-                evidence: context.and_then(|item| item.evidence.clone()),
+                evidence: context
+                    .map(|item| item.evidence.clone())
+                    .unwrap_or_default(),
             }
         })
         .collect()
@@ -331,7 +333,7 @@ fn build_legacy_actions(analysis: &Analysis) -> Vec<ActionLine> {
                     dependency.name
                 ),
                 details: Vec::new(),
-                evidence: first_evidence_line(&dependency.finding),
+                evidence: display_evidence_lines(&dependency.finding),
             });
             continue;
         }
@@ -339,7 +341,7 @@ fn build_legacy_actions(analysis: &Analysis) -> Vec<ActionLine> {
         actions.push(ActionLine {
             headline: format!("Review {}: {}", dependency.name, dependency.recommendation),
             details: Vec::new(),
-            evidence: first_evidence_line(&dependency.finding),
+            evidence: display_evidence_lines(&dependency.finding),
         });
     }
 
@@ -352,7 +354,7 @@ fn build_legacy_actions(analysis: &Analysis) -> Vec<ActionLine> {
                 duplicate.estimated_extra_kb
             ),
             details: Vec::new(),
-            evidence: first_evidence_line(&duplicate.finding),
+            evidence: display_evidence_lines(&duplicate.finding),
         });
     }
 
@@ -368,7 +370,7 @@ fn build_legacy_actions(analysis: &Analysis) -> Vec<ActionLine> {
                 candidate.name, file, candidate.estimated_savings_kb
             ),
             details: Vec::new(),
-            evidence: first_evidence_line(&candidate.finding),
+            evidence: display_evidence_lines(&candidate.finding),
         });
     }
 
@@ -379,7 +381,7 @@ fn build_legacy_actions(analysis: &Analysis) -> Vec<ActionLine> {
                 warning.package_name, warning.recommendation
             ),
             details: Vec::new(),
-            evidence: first_evidence_line(&warning.finding),
+            evidence: display_evidence_lines(&warning.finding),
         });
     }
 
@@ -483,7 +485,7 @@ fn with_detail_lines(
     let mut lines = vec![summary];
     lines.extend(details.iter().map(|detail| format!("{indent}{detail}")));
 
-    if let Some(evidence) = first_evidence_line(finding) {
+    for evidence in display_evidence_lines(finding) {
         lines.push(format!("{indent}evidence: {evidence}"));
     }
 
@@ -500,7 +502,7 @@ fn confidence_bracket(finding: &FindingMetadata) -> String {
 #[derive(Clone)]
 struct ActionContext {
     headline: String,
-    evidence: Option<String>,
+    evidence: Vec<String>,
 }
 
 fn build_action_contexts(analysis: &Analysis) -> BTreeMap<String, ActionContext> {
@@ -563,7 +565,7 @@ fn insert_action_context(
         finding_id.clone(),
         ActionContext {
             headline,
-            evidence: first_evidence_line(finding),
+            evidence: display_evidence_lines(finding),
         },
     );
 }
@@ -627,15 +629,28 @@ fn render_action_line(item: &ActionLine, index: usize) -> String {
         lines.push(format!("   {detail}"));
     }
 
-    if let Some(evidence) = item.evidence.as_deref() {
+    for evidence in &item.evidence {
         lines.push(format!("   evidence: {evidence}"));
     }
 
     lines.join("\n")
 }
 
-fn first_evidence_line(finding: &FindingMetadata) -> Option<String> {
-    finding.evidence.first().map(format_evidence)
+fn display_evidence_lines(finding: &FindingMetadata) -> Vec<String> {
+    let lines = finding
+        .evidence
+        .iter()
+        .map(format_evidence)
+        .collect::<Vec<_>>();
+    if finding
+        .evidence
+        .iter()
+        .any(|evidence| evidence.kind == "artifact-chunk")
+    {
+        lines
+    } else {
+        lines.into_iter().take(1).collect()
+    }
 }
 
 fn format_evidence(evidence: &FindingEvidence) -> String {

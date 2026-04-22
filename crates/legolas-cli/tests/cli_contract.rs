@@ -1,6 +1,7 @@
 mod support;
 
 use assert_cmd::Command;
+use serde_json::json;
 
 #[test]
 fn prints_version_without_a_command() {
@@ -103,6 +104,71 @@ fn matches_scan_json_oracle() {
         support::normalize_analysis_json_output(&support::read_oracle("basic-app/scan.json"))
     );
     assert_eq!(String::from_utf8(output.stderr).expect("stderr"), "");
+}
+
+#[test]
+fn merge_app_scan_json_exposes_additive_artifact_contract() {
+    let fixture = support::fixture_path("tests/fixtures/artifacts/merge-app");
+    let output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["scan", &fixture.display().to_string(), "--json"])
+        .output()
+        .expect("run merge-app scan --json");
+
+    assert!(output.status.success());
+    let analysis =
+        support::normalize_analysis_json_output(&String::from_utf8(output.stdout).expect("stdout"));
+    let heavy_dependencies = analysis["heavyDependencies"]
+        .as_array()
+        .expect("heavy dependencies array");
+
+    let chart_js = heavy_dependencies
+        .iter()
+        .find(|item| item["name"] == "chart.js")
+        .expect("chart.js heavy dependency");
+    assert_eq!(chart_js["analysisSource"], json!("artifact-source"));
+    let chart_js_evidence = chart_js["evidence"].as_array().expect("chart.js evidence");
+    assert_eq!(chart_js_evidence.len(), 2);
+    assert_eq!(chart_js_evidence[0]["kind"], json!("source-file"));
+    assert_eq!(chart_js_evidence[0]["file"], json!("src/AdminPage.tsx"));
+    assert_eq!(chart_js_evidence[0]["specifier"], json!("chart.js"));
+    assert_eq!(chart_js_evidence[1]["kind"], json!("artifact-chunk"));
+    assert_eq!(chart_js_evidence[1]["file"], json!("dist/admin.js"));
+    assert_eq!(chart_js_evidence[1]["specifier"], json!("chart.js"));
+    assert_eq!(
+        chart_js_evidence[1]["detail"],
+        json!("artifact chunk `admin` contributes 6200 bytes; entrypoints: dashboard")
+    );
+
+    let lodash = heavy_dependencies
+        .iter()
+        .find(|item| item["name"] == "lodash")
+        .expect("lodash heavy dependency");
+    assert_eq!(lodash["analysisSource"], json!("artifact"));
+    assert_eq!(
+        lodash["evidence"],
+        json!([
+            {
+                "kind": "artifact-chunk",
+                "file": "dist/vendor.js",
+                "specifier": "lodash",
+                "detail": "artifact chunk `vendor` contributes 5100 bytes; entrypoints: dashboard"
+            }
+        ])
+    );
+
+    let react_icons = heavy_dependencies
+        .iter()
+        .find(|item| item["name"] == "react-icons")
+        .expect("react-icons heavy dependency");
+    assert_eq!(react_icons["analysisSource"], json!("source-import"));
+    let react_icons_evidence = react_icons["evidence"]
+        .as_array()
+        .expect("react-icons evidence");
+    assert_eq!(react_icons_evidence.len(), 1);
+    assert_eq!(react_icons_evidence[0]["kind"], json!("source-file"));
+    assert_eq!(react_icons_evidence[0]["file"], json!("src/AdminPage.tsx"));
+    assert_eq!(react_icons_evidence[0]["specifier"], json!("react-icons"));
 }
 
 #[test]

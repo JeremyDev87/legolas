@@ -7,6 +7,8 @@ pub enum FindingAnalysisSource {
     Heuristic,
     SourceImport,
     LockfileTrace,
+    Artifact,
+    ArtifactSource,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

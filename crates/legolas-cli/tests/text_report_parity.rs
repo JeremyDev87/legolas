@@ -4,9 +4,9 @@ use legolas_cli::reporters::text::{
     format_optimize_report, format_scan_report, format_visualization_report,
 };
 use legolas_core::{
-    Analysis, DuplicateOrigin, DuplicatePackage, FindingAnalysisSource, FindingEvidence,
-    FindingMetadata, HeavyDependency, Impact, LazyLoadCandidate, Metadata, PackageSummary,
-    SourceSummary,
+    Analysis, DuplicateOrigin, DuplicatePackage, FindingAnalysisSource, FindingConfidence,
+    FindingEvidence, FindingMetadata, HeavyDependency, Impact, LazyLoadCandidate, Metadata,
+    PackageSummary, SourceSummary,
 };
 
 fn load_analysis() -> Analysis {
@@ -102,6 +102,51 @@ fn scan_and_optimize_reports_only_render_the_first_evidence_line_per_finding() {
         )
     );
     assert!(!optimize.contains("second evidence detail"));
+}
+
+#[test]
+fn scan_and_optimize_reports_render_all_evidence_lines_for_artifact_assisted_findings() {
+    let mut analysis = base_analysis("artifact-evidence-app");
+    analysis.heavy_dependencies = vec![HeavyDependency {
+        name: "chart.js".to_string(),
+        estimated_kb: 160,
+        rationale: "Charting code is often only needed on a subset of screens.".to_string(),
+        recommendation:
+            "Register only the chart primitives you use and lazy load dashboard surfaces."
+                .to_string(),
+        imported_by: vec!["src/Admin.tsx".to_string()],
+        finding: FindingMetadata::new(
+            "heavy-dependency:chart.js",
+            FindingAnalysisSource::ArtifactSource,
+        )
+        .with_confidence(FindingConfidence::High)
+        .with_evidence([
+            FindingEvidence::new("source-file")
+                .with_file("src/Admin.tsx")
+                .with_specifier("chart.js")
+                .with_detail("source evidence detail"),
+            FindingEvidence::new("artifact-chunk")
+                .with_file("dist/admin.js")
+                .with_specifier("chart.js")
+                .with_detail("artifact chunk `admin` contributes 6200 bytes"),
+        ]),
+        ..HeavyDependency::default()
+    }];
+
+    let scan = format_scan_report(&analysis);
+    assert!(
+        scan.contains("  evidence: src/Admin.tsx | specifier: chart.js | source evidence detail")
+    );
+    assert!(scan.contains(
+        "  evidence: dist/admin.js | specifier: chart.js | artifact chunk `admin` contributes 6200 bytes"
+    ));
+
+    let optimize = format_optimize_report(&analysis, 1);
+    assert!(optimize
+        .contains("   evidence: src/Admin.tsx | specifier: chart.js | source evidence detail"));
+    assert!(optimize.contains(
+        "   evidence: dist/admin.js | specifier: chart.js | artifact chunk `admin` contributes 6200 bytes"
+    ));
 }
 
 #[test]

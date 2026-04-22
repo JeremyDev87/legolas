@@ -1,5 +1,6 @@
 use std::{
     cmp::Reverse,
+    collections::BTreeMap,
     fs,
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -11,7 +12,10 @@ use serde_json::Value;
 
 use crate::{
     action_plan::apply_action_plan,
-    artifacts::{detect::parse_artifact_file, detect::KNOWN_ARTIFACT_FILES, ArtifactSummary},
+    artifacts::{
+        detect::parse_artifact_file, detect::KNOWN_ARTIFACT_FILES, merge_artifact_source_signals,
+        ArtifactSummary,
+    },
     confidence::{score_duplicate_package, score_heavy_dependency, score_lazy_load_candidate},
     error::Result,
     findings::{FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata},
@@ -61,6 +65,12 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
     );
     let tree_shaking_warnings = build_tree_shaking_warnings(&source_analysis);
     let artifact_assist = collect_artifact_assist(&project_root)?;
+    let mut heavy_dependencies = heavy_dependencies;
+    if let Some(artifact_summary) = artifact_assist.artifact_summary.as_ref() {
+        let merged_signals =
+            merge_artifact_source_signals(artifact_summary, &source_analysis, &heavy_dependencies);
+        apply_merged_artifact_signals(&mut heavy_dependencies, &merged_signals);
+    }
     let impact = estimate_impact(
         &heavy_dependencies,
         &duplicate_analysis.duplicates,
@@ -326,6 +336,38 @@ fn build_heavy_dependency_finding(
     FindingMetadata::new(format!("heavy-dependency:{package_name}"), analysis_source)
         .with_confidence(score_heavy_dependency(import_info))
         .with_evidence(evidence)
+}
+
+fn apply_merged_artifact_signals(
+    heavy_dependencies: &mut [HeavyDependency],
+    merged_signals: &[crate::artifacts::ArtifactSourceSignal],
+) {
+    let signals_by_package = merged_signals
+        .iter()
+        .map(|signal| (signal.package_name.as_str(), signal))
+        .collect::<BTreeMap<_, _>>();
+
+    for dependency in heavy_dependencies {
+        let Some(signal) = signals_by_package.get(dependency.name.as_str()) else {
+            continue;
+        };
+
+        let analysis_source = match signal.kind {
+            crate::artifacts::ArtifactSignalKind::Source => continue,
+            crate::artifacts::ArtifactSignalKind::Artifact => FindingAnalysisSource::Artifact,
+            crate::artifacts::ArtifactSignalKind::ArtifactSource => {
+                FindingAnalysisSource::ArtifactSource
+            }
+        };
+
+        dependency.finding.analysis_source = Some(analysis_source);
+        dependency.finding.evidence.extend(
+            signal
+                .evidence()
+                .into_iter()
+                .skip(signal.source_files.len()),
+        );
+    }
 }
 
 fn build_lazy_load_finding(
