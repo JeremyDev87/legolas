@@ -1,13 +1,29 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 5,
   "projectName": "baseline-app",
   "packageManager": "npm",
   "dependencyCount": 1,
   "devDependencyCount": 0,
   "sourceFileCount": 1,
+  "dynamicImportCount": 0,
+  "potentialKbSaved": 66,
   "heavyDependencyNames": [
     "chart.js"
   ],
   "treeShakingWarningKeys": [],
+  "duplicatePackageKeys": [],
+  "lazyLoadCandidateKeys": [],
+  "boundaryWarningKeys": [],
+  "unusedDependencyCandidateNames": [],
+  "heavyDependencyMetrics": [
+    {
+      "key": "chart.js",
+      "primaryMetric": 66,
+      "secondaryMetric": 1
+    }
+  ],
+  "treeShakingWarningMetrics": [],
+  "duplicatePackageMetrics": [],
+  "lazyLoadCandidateMetrics": [],
   "warnings": []
 }
