@@ -1,0 +1,8 @@
+{
+  "name": "pnpm-workspace-root",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "workspaces": [
+    "apps/*"
+  ]
+}
