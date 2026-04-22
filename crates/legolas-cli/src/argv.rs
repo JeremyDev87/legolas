@@ -18,6 +18,9 @@ pub struct CliArgs {
     pub command: Option<Command>,
     pub target_path: Option<PathBuf>,
     pub config_path: Option<PathBuf>,
+    pub baseline_path: Option<PathBuf>,
+    pub write_baseline_path: Option<PathBuf>,
+    pub regression_only: bool,
     pub json: bool,
     pub limit: Option<usize>,
     pub top: Option<usize>,
@@ -69,18 +72,20 @@ where
                 parsed.json = true;
             }
             "--config" => {
-                let next = tokens
-                    .get(index + 1)
-                    .ok_or_else(|| LegolasError::CliUsage("--config expects a path".to_string()))?;
-
-                if next.starts_with('-') {
-                    return Err(LegolasError::CliUsage(
-                        "--config expects a path".to_string(),
-                    ));
-                }
-
-                parsed.config_path = Some(resolve_path_token(next)?);
+                parsed.config_path = Some(parse_path_flag(&tokens, index, "--config")?);
                 index += 1;
+            }
+            "--baseline" => {
+                parsed.baseline_path = Some(parse_path_flag(&tokens, index, "--baseline")?);
+                index += 1;
+            }
+            "--write-baseline" => {
+                parsed.write_baseline_path =
+                    Some(parse_path_flag(&tokens, index, "--write-baseline")?);
+                index += 1;
+            }
+            "--regression-only" => {
+                parsed.regression_only = true;
             }
             "--limit" | "--top" => {
                 let command_known = parsed.command.is_some();
@@ -118,6 +123,8 @@ where
         return Ok(parsed);
     }
 
+    validate_baseline_flags(&parsed)?;
+
     parsed.limit = finalize_numeric_flag(parsed.command.as_ref(), pending_limit, "--limit")?;
     parsed.top = finalize_numeric_flag(parsed.command.as_ref(), pending_top, "--top")?;
 
@@ -145,6 +152,58 @@ fn resolve_path_token(token: &str) -> Result<PathBuf> {
     Ok(std::env::current_dir()?.join(path))
 }
 
+fn parse_path_flag(tokens: &[String], index: usize, flag: &str) -> Result<PathBuf> {
+    let next = tokens
+        .get(index + 1)
+        .ok_or_else(|| LegolasError::CliUsage(format!("{flag} expects a path")))?;
+
+    if next.starts_with('-') {
+        return Err(LegolasError::CliUsage(format!("{flag} expects a path")));
+    }
+
+    resolve_path_token(next)
+}
+
+fn validate_baseline_flags(parsed: &CliArgs) -> Result<()> {
+    if parsed.baseline_path.is_none()
+        && parsed.write_baseline_path.is_none()
+        && !parsed.regression_only
+    {
+        return Ok(());
+    }
+
+    let command_supports = matches!(
+        parsed.command,
+        Some(Command::Scan) | Some(Command::Optimize) | Some(Command::Budget) | Some(Command::Ci)
+    );
+
+    if !command_supports {
+        let flag = if parsed.baseline_path.is_some() {
+            "--baseline"
+        } else if parsed.write_baseline_path.is_some() {
+            "--write-baseline"
+        } else {
+            "--regression-only"
+        };
+
+        return Err(LegolasError::CliUsage(format!("unknown flag \"{flag}\"")));
+    }
+
+    if parsed.write_baseline_path.is_some() && !matches!(parsed.command, Some(Command::Scan)) {
+        return Err(LegolasError::CliUsage(
+            "unknown flag \"--write-baseline\"".to_string(),
+        ));
+    }
+
+    if parsed.baseline_path.is_some() && !parsed.regression_only {
+        return Err(LegolasError::CliUsage(
+            "--baseline requires --regression-only".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 fn finalize_numeric_flag(
     command: Option<&Command>,
     pending_value: Option<PendingNumericValue>,
@@ -154,7 +213,7 @@ fn finalize_numeric_flag(
         return Ok(None);
     };
 
-    if matches!(command, Some(Command::Budget | Command::Ci)) {
+    if matches!(command, Some(Command::Budget) | Some(Command::Ci)) {
         return Err(LegolasError::CliUsage(format!("unknown flag \"{token}\"")));
     }
 

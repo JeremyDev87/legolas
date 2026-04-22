@@ -336,6 +336,32 @@ fn matches_missing_number_and_unknown_flag_contracts() {
             vec!["scan".to_string(), "--config".to_string()],
             "legolas: --config expects a path\n",
         ),
+        (
+            vec![
+                "visualize".to_string(),
+                fixture.display().to_string(),
+                "--baseline".to_string(),
+                fixture.join("baseline.json").display().to_string(),
+            ],
+            "legolas: unknown flag \"--baseline\"\n",
+        ),
+        (
+            vec![
+                "visualize".to_string(),
+                fixture.display().to_string(),
+                "--write-baseline".to_string(),
+                fixture.join("baseline.json").display().to_string(),
+            ],
+            "legolas: unknown flag \"--write-baseline\"\n",
+        ),
+        (
+            vec![
+                "visualize".to_string(),
+                fixture.display().to_string(),
+                "--regression-only".to_string(),
+            ],
+            "legolas: unknown flag \"--regression-only\"\n",
+        ),
     ];
 
     for (args, expected_stderr) in cases {
