@@ -1,0 +1,9 @@
+{
+  "name": "admin-app",
+  "private": true,
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "lodash": "^4.17.21",
+    "react": "^18.2.0"
+  }
+}
