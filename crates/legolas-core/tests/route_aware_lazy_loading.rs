@@ -6,6 +6,7 @@ use legolas_core::{
     analyze_project,
     project_shape::detect_frameworks,
     route_context::{classify_route_context, RouteContextKind},
+    FindingConfidence,
 };
 use serde_json::Value;
 use tempfile::tempdir;
@@ -588,6 +589,11 @@ fn analyze_project_uses_route_context_for_lazy_load_candidates_without_keyword_m
         candidate.reason,
         "chart.js is statically imported in route-aware UI surfaces that usually tolerate lazy loading"
     );
+    assert_eq!(candidate.estimated_savings_kb, 128);
+    assert_eq!(
+        candidate.finding.confidence,
+        Some(FindingConfidence::Medium)
+    );
     let evidence = candidate
         .finding
         .evidence
@@ -721,6 +727,7 @@ fn analyze_project_keeps_direct_route_files_inside_support_named_segments_as_can
         candidate.reason,
         "chart.js is statically imported in route-aware UI surfaces that usually tolerate lazy loading"
     );
+    assert_eq!(candidate.estimated_savings_kb, 128);
     let evidence = candidate
         .finding
         .evidence

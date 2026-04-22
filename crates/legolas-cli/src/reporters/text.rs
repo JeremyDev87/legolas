@@ -92,19 +92,7 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
     append_section(
         &mut lines,
         &analysis.lazy_load_candidates,
-        |item, _| {
-            with_evidence(
-                format!(
-                    "- {}{}: {}. Estimated win {} KB.",
-                    item.name,
-                    confidence_bracket(&item.finding),
-                    item.reason,
-                    item.estimated_savings_kb
-                ),
-                &item.finding,
-                "  ",
-            )
-        },
+        |item, _| with_evidence(lazy_load_summary(item), &item.finding, "  "),
         "- none",
     );
 
@@ -452,6 +440,38 @@ fn dedupe_actions(items: Vec<ActionLine>) -> Vec<ActionLine> {
 
 fn with_evidence(summary: String, finding: &FindingMetadata, indent: &str) -> String {
     with_detail_lines(summary, &[], finding, indent)
+}
+
+fn lazy_load_summary(item: &legolas_core::LazyLoadCandidate) -> String {
+    if item.reason.contains("route-aware") && !item.files.is_empty() {
+        if item.files.len() == 1 {
+            return format!(
+                "- {}{}: route surface {} statically imports {} and usually tolerates lazy loading. Estimated win {} KB.",
+                item.name,
+                confidence_bracket(&item.finding),
+                item.files[0],
+                item.name,
+                item.estimated_savings_kb
+            );
+        }
+
+        return format!(
+            "- {}{}: route surfaces {} statically import {} and usually tolerate lazy loading. Estimated win {} KB.",
+            item.name,
+            confidence_bracket(&item.finding),
+            item.files.join(", "),
+            item.name,
+            item.estimated_savings_kb
+        );
+    }
+
+    format!(
+        "- {}{}: {}. Estimated win {} KB.",
+        item.name,
+        confidence_bracket(&item.finding),
+        item.reason,
+        item.estimated_savings_kb
+    )
 }
 
 fn with_detail_lines(

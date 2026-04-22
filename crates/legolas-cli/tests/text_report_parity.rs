@@ -41,7 +41,7 @@ fn scan_and_optimize_reports_render_compact_evidence_lines() {
         "- chart.js (160 KB) [high confidence]: Charting code is often only needed on a subset of screens. imported in 1 file(s)."
     ));
     assert!(scan.contains(
-        "- chart.js [medium confidence]: chart.js is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 120 KB."
+        "- chart.js [low confidence]: chart.js is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 120 KB."
     ));
     assert!(scan.contains(
         "  evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens."
@@ -132,6 +132,72 @@ fn scan_report_renders_all_duplicate_origin_lines() {
     assert!(scan.contains("  origin: 4.17.19 via shell -> shared"));
     assert!(scan.contains("  origin: 4.17.20 via admin"));
     assert!(scan.contains("  origin: 4.17.21 via docs -> shared"));
+}
+
+#[test]
+fn scan_report_renders_route_aware_lazy_load_file_in_summary() {
+    let mut analysis = base_analysis("route-aware-report");
+    analysis.lazy_load_candidates = vec![LazyLoadCandidate {
+        name: "chart.js".to_string(),
+        estimated_savings_kb: 128,
+        recommendation: "Load it lazily.".to_string(),
+        files: vec!["app/reports/page.tsx".to_string()],
+        reason:
+            "chart.js is statically imported in route-aware UI surfaces that usually tolerate lazy loading"
+                .to_string(),
+        finding: FindingMetadata::new("lazy-load:chart.js", FindingAnalysisSource::Heuristic)
+            .with_confidence(legolas_core::FindingConfidence::Medium)
+            .with_evidence([FindingEvidence::new("route-file")
+                .with_file("app/reports/page.tsx")
+                .with_specifier("chart.js")
+                .with_detail("route context classified `route-page`")]),
+    }];
+
+    let scan = format_scan_report(&analysis);
+    assert!(scan.contains(
+        "- chart.js [medium confidence]: route surface app/reports/page.tsx statically imports chart.js and usually tolerates lazy loading. Estimated win 128 KB."
+    ));
+    assert!(scan.contains(
+        "  evidence: app/reports/page.tsx | specifier: chart.js | route context classified `route-page`"
+    ));
+}
+
+#[test]
+fn scan_report_renders_all_route_aware_lazy_load_files_in_summary() {
+    let mut analysis = base_analysis("route-aware-multi-report");
+    analysis.lazy_load_candidates = vec![LazyLoadCandidate {
+        name: "chart.js".to_string(),
+        estimated_savings_kb: 128,
+        recommendation: "Load it lazily.".to_string(),
+        files: vec![
+            "app/reports/page.tsx".to_string(),
+            "app/settings/page.tsx".to_string(),
+        ],
+        reason:
+            "chart.js is statically imported in route-aware UI surfaces that usually tolerate lazy loading"
+                .to_string(),
+        finding: FindingMetadata::new("lazy-load:chart.js", FindingAnalysisSource::Heuristic)
+            .with_confidence(legolas_core::FindingConfidence::Medium)
+            .with_evidence([
+                FindingEvidence::new("route-file")
+                    .with_file("app/reports/page.tsx")
+                    .with_specifier("chart.js")
+                    .with_detail("route context classified `route-page`"),
+                FindingEvidence::new("route-file")
+                    .with_file("app/settings/page.tsx")
+                    .with_specifier("chart.js")
+                    .with_detail("route context classified `route-page`"),
+            ]),
+    }];
+
+    let scan = format_scan_report(&analysis);
+    assert!(scan.contains(
+        "- chart.js [medium confidence]: route surfaces app/reports/page.tsx, app/settings/page.tsx statically import chart.js and usually tolerate lazy loading. Estimated win 128 KB."
+    ));
+    assert!(scan.contains(
+        "  evidence: app/reports/page.tsx | specifier: chart.js | route context classified `route-page`"
+    ));
+    assert!(!scan.contains("app/settings/page.tsx | specifier: chart.js"));
 }
 
 #[test]
