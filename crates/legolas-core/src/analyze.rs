@@ -16,6 +16,7 @@ use crate::{
         detect::parse_artifact_file, detect::KNOWN_ARTIFACT_FILES, merge_artifact_source_signals,
         ArtifactSummary,
     },
+    boundaries::{collect_boundary_warnings, Phase8SeedContext},
     confidence::{score_duplicate_package, score_heavy_dependency, score_lazy_load_candidate},
     error::Result,
     findings::{FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata},
@@ -32,6 +33,7 @@ use crate::{
     project_shape::{detect_frameworks, detect_package_manager},
     route_context::{classify_route_context, RouteContextKind},
     workspace::{find_project_root, load_alias_config, read_json_if_exists},
+    workspaces::collect_workspace_summaries,
     LegolasError,
 };
 
@@ -65,6 +67,18 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
     );
     let tree_shaking_warnings = build_tree_shaking_warnings(&source_analysis);
     let artifact_assist = collect_artifact_assist(&project_root)?;
+    let phase8_context = Phase8SeedContext {
+        project_root: &project_root,
+        package_manager: &package_manager,
+        frameworks: &frameworks,
+        bundle_artifacts: &artifact_assist.bundle_artifacts,
+        source_analysis: &source_analysis,
+        source_file_count: source_files.len(),
+        imported_package_count: source_analysis.imported_packages.len(),
+        dynamic_import_count: source_analysis.dynamic_import_count,
+    };
+    let boundary_warnings = collect_boundary_warnings(&phase8_context);
+    let workspace_summaries = collect_workspace_summaries(&phase8_context);
     let mut heavy_dependencies = heavy_dependencies;
     if let Some(artifact_summary) = artifact_assist.artifact_summary.as_ref() {
         let merged_signals =
@@ -90,6 +104,8 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
             imported_packages: source_analysis.imported_packages.len(),
             dynamic_imports: source_analysis.dynamic_import_count,
         },
+        boundary_warnings,
+        workspace_summaries,
         heavy_dependencies,
         duplicate_packages: duplicate_analysis.duplicates,
         lazy_load_candidates,

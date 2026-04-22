@@ -1,4 +1,7 @@
-use crate::{artifacts::ArtifactSummary, findings::FindingMetadata};
+use crate::{
+    artifacts::ArtifactSummary, boundaries::BoundaryWarning, findings::FindingMetadata,
+    workspaces::WorkspaceSummary,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -12,6 +15,10 @@ pub struct Analysis {
     pub artifact_summary: Option<ArtifactSummary>,
     pub package_summary: PackageSummary,
     pub source_summary: SourceSummary,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub boundary_warnings: Vec<BoundaryWarning>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workspace_summaries: Vec<WorkspaceSummary>,
     pub heavy_dependencies: Vec<HeavyDependency>,
     pub duplicate_packages: Vec<DuplicatePackage>,
     pub lazy_load_candidates: Vec<LazyLoadCandidate>,
