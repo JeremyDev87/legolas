@@ -58,7 +58,7 @@ fn analyze_project_populates_lazy_load_candidate_evidence() {
     assert_finding_metadata(
         &candidate.finding,
         FindingMetadata::new("lazy-load:chart.js", FindingAnalysisSource::Heuristic)
-            .with_confidence(FindingConfidence::Medium)
+            .with_confidence(FindingConfidence::Low)
             .with_evidence([FindingEvidence::new("source-file")
                 .with_file("src/AdminDashboard.tsx")
                 .with_specifier("chart.js")
@@ -143,7 +143,7 @@ fn analyze_project_limits_lazy_load_evidence_to_candidate_files() {
     assert_finding_metadata(
         &candidate.finding,
         FindingMetadata::new("lazy-load:chart.js", FindingAnalysisSource::Heuristic)
-            .with_confidence(FindingConfidence::Medium)
+            .with_confidence(FindingConfidence::Low)
             .with_evidence([FindingEvidence::new("source-file")
                 .with_file("src/Dashboard.tsx")
                 .with_specifier("chart.js")

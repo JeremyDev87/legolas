@@ -23,11 +23,11 @@ Duplicate package versions:
   origin: 4.17.21 via lodash
 
 Lazy-load candidates:
-- chart.js [medium confidence]: chart.js is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 120 KB.
+- chart.js [low confidence]: chart.js is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 120 KB.
   evidence: src/Dashboard.tsx | specifier: chart.js | route-like UI surface matched `dashboard` keyword
-- react-icons [medium confidence]: react-icons is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 68 KB.
+- react-icons [low confidence]: react-icons is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 68 KB.
   evidence: src/Dashboard.tsx | specifier: react-icons | route-like UI surface matched `dashboard` keyword
-- lodash [medium confidence]: lodash is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 54 KB.
+- lodash [low confidence]: lodash is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 54 KB.
   evidence: src/Dashboard.tsx | specifier: lodash | route-like UI surface matched `dashboard` keyword
 
 Tree-shaking warnings:

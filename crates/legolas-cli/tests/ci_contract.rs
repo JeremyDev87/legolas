@@ -53,9 +53,9 @@ fn potential_kb_saved_findings() -> Vec<serde_json::Value> {
         triggered_finding("heavy-dependency:react-icons", "source-import", "high"),
         triggered_finding("heavy-dependency:lodash", "source-import", "high"),
         triggered_finding("duplicate-package:lodash", "lockfile-trace", "high"),
-        triggered_finding("lazy-load:chart.js", "heuristic", "medium"),
-        triggered_finding("lazy-load:react-icons", "heuristic", "medium"),
-        triggered_finding("lazy-load:lodash", "heuristic", "medium"),
+        triggered_finding("lazy-load:chart.js", "heuristic", "low"),
+        triggered_finding("lazy-load:react-icons", "heuristic", "low"),
+        triggered_finding("lazy-load:lodash", "heuristic", "low"),
         triggered_finding("tree-shaking:lodash-root-import", "source-import", "high"),
         triggered_finding(
             "tree-shaking:react-icons-root-import",
@@ -67,9 +67,9 @@ fn potential_kb_saved_findings() -> Vec<serde_json::Value> {
 
 fn dynamic_import_findings() -> Vec<serde_json::Value> {
     vec![
-        triggered_finding("lazy-load:chart.js", "heuristic", "medium"),
-        triggered_finding("lazy-load:react-icons", "heuristic", "medium"),
-        triggered_finding("lazy-load:lodash", "heuristic", "medium"),
+        triggered_finding("lazy-load:chart.js", "heuristic", "low"),
+        triggered_finding("lazy-load:react-icons", "heuristic", "low"),
+        triggered_finding("lazy-load:lodash", "heuristic", "low"),
     ]
 }
 

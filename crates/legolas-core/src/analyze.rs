@@ -14,7 +14,7 @@ use crate::{
     artifacts::{detect::parse_artifact_file, detect::KNOWN_ARTIFACT_FILES, ArtifactSummary},
     confidence::{score_duplicate_package, score_heavy_dependency, score_lazy_load_candidate},
     error::Result,
-    findings::{FindingAnalysisSource, FindingEvidence, FindingMetadata},
+    findings::{FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata},
     impact::estimate_impact,
     import_scanner::{
         collect_source_files, scan_imports_with_aliases, ImportedPackageRecord, SourceAnalysis,
@@ -247,20 +247,13 @@ fn build_lazy_load_candidates(
             continue;
         }
 
-        let reason = if route_context_files.is_empty() {
-            format!(
-                "{} is statically imported in UI surfaces that usually tolerate lazy loading",
-                imported_package.name
-            )
-        } else {
-            format!(
-                "{} is statically imported in route-aware UI surfaces that usually tolerate lazy loading",
-                imported_package.name
-            )
-        };
+        let reason = lazy_load_reason(&imported_package.name, &route_context_files);
         candidates.push(LazyLoadCandidate {
             name: imported_package.name.clone(),
-            estimated_savings_kb: (heavy.estimated_kb as f64 * 0.75).round() as usize,
+            estimated_savings_kb: lazy_load_estimated_savings_kb(
+                heavy.estimated_kb,
+                &route_context_files,
+            ),
             recommendation: heavy.recommendation.clone(),
             files: split_friendly_files,
             reason,
@@ -366,8 +359,48 @@ fn build_lazy_load_finding(
         format!("lazy-load:{package_name}"),
         FindingAnalysisSource::Heuristic,
     )
-    .with_confidence(score_lazy_load_candidate())
+    .with_confidence(lazy_load_candidate_confidence(route_context_files))
     .with_evidence(evidence)
+}
+
+fn lazy_load_reason(
+    package_name: &str,
+    route_context_files: &[(String, RouteContextKind)],
+) -> String {
+    if route_context_files.is_empty() {
+        format!(
+            "{} is statically imported in UI surfaces that usually tolerate lazy loading",
+            package_name
+        )
+    } else {
+        format!(
+            "{} is statically imported in route-aware UI surfaces that usually tolerate lazy loading",
+            package_name
+        )
+    }
+}
+
+fn lazy_load_estimated_savings_kb(
+    estimated_kb: usize,
+    route_context_files: &[(String, RouteContextKind)],
+) -> usize {
+    let multiplier = if route_context_files.is_empty() {
+        0.75
+    } else {
+        0.80
+    };
+
+    (estimated_kb as f64 * multiplier).round() as usize
+}
+
+fn lazy_load_candidate_confidence(
+    route_context_files: &[(String, RouteContextKind)],
+) -> FindingConfidence {
+    if route_context_files.is_empty() {
+        FindingConfidence::Low
+    } else {
+        score_lazy_load_candidate()
+    }
 }
 
 fn lazy_load_surface_detail(file: &str) -> String {

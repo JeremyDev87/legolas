@@ -1,6 +1,9 @@
 mod support;
 
+use std::fs;
+
 use legolas_core::{analyze_project, FindingConfidence};
+use tempfile::tempdir;
 
 #[test]
 fn analyze_project_marks_direct_import_findings_as_high_confidence() {
@@ -31,11 +34,45 @@ fn analyze_project_marks_direct_import_findings_as_high_confidence() {
 }
 
 #[test]
-fn analyze_project_marks_lazy_load_candidates_as_medium_confidence() {
+fn analyze_project_marks_filename_heuristic_lazy_load_candidates_as_low_confidence() {
     let analysis = analyze_project(support::fixture_path(
         "tests/fixtures/confidence/high-confidence",
     ))
     .expect("analyze high confidence fixture");
+    let candidate = analysis
+        .lazy_load_candidates
+        .iter()
+        .find(|item| item.name == "chart.js")
+        .expect("chart.js lazy-load candidate");
+
+    assert_eq!(candidate.finding.confidence, Some(FindingConfidence::Low));
+}
+
+#[test]
+fn analyze_project_marks_route_aware_lazy_load_candidates_as_medium_confidence() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    fs::write(
+        root.join("package.json"),
+        r#"{
+  "name": "route-aware-confidence-app",
+  "dependencies": {
+    "chart.js": "^4.4.1",
+    "next": "^15.0.0",
+    "react": "^19.0.0"
+  }
+}"#,
+    )
+    .expect("write package.json");
+    fs::create_dir_all(root.join("app/reports")).expect("create route dir");
+    fs::write(
+        root.join("app/reports/page.tsx"),
+        "import { Chart } from \"chart.js\";\nexport default function ReportsPage() { return Chart; }\n",
+    )
+    .expect("write route page");
+
+    let analysis = analyze_project(root).expect("analyze route-aware confidence fixture");
     let candidate = analysis
         .lazy_load_candidates
         .iter()
