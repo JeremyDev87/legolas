@@ -14,7 +14,7 @@ fn analyze_project_emits_general_server_client_boundary_warning() {
     let warning = &analysis.boundary_warnings[0];
     assert_eq!(
         warning.message,
-        "Client surface `src/client/App.tsx` imports the Node-only `fs` module."
+        "Client surface `src/client/App.tsx` imports the Node-only `node:fs` module."
     );
     assert_eq!(
         warning.recommendation,
@@ -30,7 +30,7 @@ fn analyze_project_emits_general_server_client_boundary_warning() {
         .with_action_priority(1)
         .with_evidence([FindingEvidence::new("source-file")
             .with_file("src/client/App.tsx")
-            .with_specifier("fs")
+            .with_specifier("node:fs")
             .with_detail("client surface imports a Node-only module")]),
     );
 }
