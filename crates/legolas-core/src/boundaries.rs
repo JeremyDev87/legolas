@@ -39,13 +39,19 @@ pub struct Phase8SeedContext<'a> {
 pub fn collect_boundary_warnings(context: &Phase8SeedContext<'_>) -> Vec<BoundaryWarning> {
     let mut warnings = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
+    let next_client_surface_enabled = context
+        .frameworks
+        .iter()
+        .any(|framework| framework == "Next.js");
 
     for (package_name, record) in &context.source_analysis.by_package {
         if !is_server_only_package(package_name) {
             continue;
         }
 
-        let Some(client_file) = record.files.iter().find(|file| is_client_surface(file)) else {
+        let Some(client_file) = record.files.iter().find(|file| {
+            is_client_surface(context.project_root, file, next_client_surface_enabled)
+        }) else {
             continue;
         };
 
@@ -59,7 +65,9 @@ pub fn collect_boundary_warnings(context: &Phase8SeedContext<'_>) -> Vec<Boundar
         }
     }
 
-    for (client_file, specifier) in collect_node_prefix_client_imports(context.project_root) {
+    for (client_file, specifier) in
+        collect_node_prefix_client_imports(context.project_root, next_client_surface_enabled)
+    {
         let Some(package_name) = specifier.strip_prefix("node:") else {
             continue;
         };
@@ -130,21 +138,39 @@ fn server_only_packages() -> &'static [&'static str] {
         .as_slice()
 }
 
-fn is_client_surface(relative_path: &str) -> bool {
-    Path::new(relative_path)
+fn is_client_surface(
+    project_root: &Path,
+    relative_path: &str,
+    next_client_surface_enabled: bool,
+) -> bool {
+    if Path::new(relative_path)
         .components()
         .any(|component| matches!(component, Component::Normal(segment) if segment == "client"))
+    {
+        return true;
+    }
+
+    next_client_surface_enabled && has_use_client_directive(project_root.join(relative_path))
 }
 
-fn collect_node_prefix_client_imports(project_root: &Path) -> Vec<(String, String)> {
+fn collect_node_prefix_client_imports(
+    project_root: &Path,
+    next_client_surface_enabled: bool,
+) -> Vec<(String, String)> {
     let mut matches = Vec::new();
-    collect_node_prefix_client_imports_inner(project_root, project_root, &mut matches);
+    collect_node_prefix_client_imports_inner(
+        project_root,
+        project_root,
+        next_client_surface_enabled,
+        &mut matches,
+    );
     matches
 }
 
 fn collect_node_prefix_client_imports_inner(
     project_root: &Path,
     current: &Path,
+    next_client_surface_enabled: bool,
     matches: &mut Vec<(String, String)>,
 ) {
     let Ok(entries) = fs::read_dir(current) else {
@@ -177,7 +203,12 @@ fn collect_node_prefix_client_imports_inner(
             ) {
                 continue;
             }
-            collect_node_prefix_client_imports_inner(project_root, &path, matches);
+            collect_node_prefix_client_imports_inner(
+                project_root,
+                &path,
+                next_client_surface_enabled,
+                matches,
+            );
             continue;
         }
 
@@ -188,7 +219,7 @@ fn collect_node_prefix_client_imports_inner(
         let Some(relative_path) = path.strip_prefix(project_root).ok().map(to_posix) else {
             continue;
         };
-        if !is_client_surface(&relative_path) {
+        if !is_client_surface(project_root, &relative_path, next_client_surface_enabled) {
             continue;
         }
 
@@ -199,6 +230,86 @@ fn collect_node_prefix_client_imports_inner(
             matches.push((relative_path.clone(), specifier));
         }
     }
+}
+
+fn has_use_client_directive(path: impl AsRef<Path>) -> bool {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return false;
+    };
+
+    has_directive_prologue_entry(&contents, "use client")
+}
+
+fn has_directive_prologue_entry(contents: &str, directive: &str) -> bool {
+    let mut in_block_comment = false;
+
+    for line in contents.lines() {
+        let mut remainder = line;
+
+        while let Some(fragment) = leading_directive_fragment(remainder, &mut in_block_comment) {
+            let Some((literal, rest)) = parse_directive_literal(fragment) else {
+                return false;
+            };
+            if literal == directive {
+                return true;
+            }
+
+            remainder = rest;
+        }
+    }
+
+    false
+}
+
+fn leading_directive_fragment<'a>(line: &'a str, in_block_comment: &mut bool) -> Option<&'a str> {
+    let mut fragment = line.trim().trim_start_matches('\u{feff}');
+
+    loop {
+        if fragment.is_empty() {
+            return None;
+        }
+
+        if *in_block_comment {
+            let block_end = fragment.find("*/")?;
+            *in_block_comment = false;
+            fragment = fragment[block_end + 2..].trim_start();
+            continue;
+        }
+
+        if fragment.starts_with("//") {
+            return None;
+        }
+
+        if fragment.starts_with("/*") {
+            if let Some(block_end) = fragment.find("*/") {
+                fragment = fragment[block_end + 2..].trim_start();
+                continue;
+            }
+
+            *in_block_comment = true;
+            return None;
+        }
+
+        return Some(fragment);
+    }
+}
+
+fn parse_directive_literal(fragment: &str) -> Option<(&str, &str)> {
+    let mut chars = fragment.char_indices();
+    let (_, quote) = chars.next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+
+    let closing = fragment[1..].find(quote)? + 1;
+    let literal = &fragment[1..closing];
+    let rest = fragment[closing + quote.len_utf8()..].trim_start();
+    if rest.is_empty() || rest.starts_with("//") || rest.starts_with("/*") {
+        return Some((literal, ""));
+    }
+
+    let rest = rest.strip_prefix(';')?.trim_start();
+    Some((literal, rest))
 }
 
 fn is_supported_source_file(path: &Path) -> bool {
@@ -229,4 +340,39 @@ fn to_posix(path: &Path) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_directive_prologue_entry;
+
+    #[test]
+    fn directive_prologue_accepts_same_line_block_comment_prefix() {
+        let contents = "/* eslint-disable */ \"use client\";\nimport fs from \"node:fs\";";
+        assert!(has_directive_prologue_entry(contents, "use client"));
+    }
+
+    #[test]
+    fn directive_prologue_accepts_trailing_comment_after_directive() {
+        let contents = "\"use client\"; // keep client-only behavior";
+        assert!(has_directive_prologue_entry(contents, "use client"));
+    }
+
+    #[test]
+    fn directive_prologue_accepts_target_after_use_strict() {
+        let contents = "\"use strict\"; \"use client\";\nimport fs from \"node:fs\";";
+        assert!(has_directive_prologue_entry(contents, "use client"));
+    }
+
+    #[test]
+    fn directive_prologue_accepts_utf8_bom_prefix() {
+        let contents = "\u{feff}\"use client\";\nimport fs from \"node:fs\";";
+        assert!(has_directive_prologue_entry(contents, "use client"));
+    }
+
+    #[test]
+    fn directive_prologue_stops_after_non_directive_code() {
+        let contents = "const mode = \"client\";\n\"use client\";";
+        assert!(!has_directive_prologue_entry(contents, "use client"));
+    }
 }

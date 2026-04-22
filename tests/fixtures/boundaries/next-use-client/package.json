@@ -1,0 +1,7 @@
+{
+  "name": "boundary-next-use-client-app",
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0"
+  }
+}
