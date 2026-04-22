@@ -1,0 +1,8 @@
+{
+  "name": "baseline-app",
+  "packageManager": "npm",
+  "dependencies": {
+    "chart.js": "^4.4.1",
+    "lodash": "^4.17.21"
+  }
+}
