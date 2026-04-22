@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "projectName": "baseline-app",
+  "packageManager": "npm",
+  "dependencyCount": 1,
+  "devDependencyCount": 0,
+  "sourceFileCount": 1,
+  "heavyDependencyNames": [
+    "chart.js"
+  ],
+  "treeShakingWarningKeys": [],
+  "warnings": []
+}
