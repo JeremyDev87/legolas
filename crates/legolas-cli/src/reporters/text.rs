@@ -26,6 +26,7 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
         "Scanned {} source files and {} imported packages",
         analysis.source_summary.files_scanned, analysis.source_summary.imported_packages
     ));
+    append_workspace_summaries(&mut lines, analysis);
     lines.push(String::new());
     lines.push(format!(
         "Potential payload reduction: ~{} KB",
@@ -227,6 +228,7 @@ pub fn format_budget_report(analysis: &Analysis, evaluation: &BudgetEvaluation) 
         analysis.package_summary.name
     ));
     append_warnings(&mut lines, &analysis.warnings);
+    append_workspace_summaries(&mut lines, analysis);
     lines.push(String::new());
     lines.push(format!("Overall status: {:?}", evaluation.overall_status));
     lines.push(String::new());
@@ -251,6 +253,7 @@ pub fn format_ci_report(analysis: &Analysis, evaluation: &BudgetEvaluation) -> S
 
     lines.push(format!("Legolas CI for {}", analysis.package_summary.name));
     append_warnings(&mut lines, &analysis.warnings);
+    append_workspace_summaries(&mut lines, analysis);
     lines.push(String::new());
     lines.push(format!(
         "Gate result: {}",
@@ -272,6 +275,31 @@ pub fn format_ci_report(analysis: &Analysis, evaluation: &BudgetEvaluation) -> S
     ));
 
     lines.join("\n")
+}
+
+fn append_workspace_summaries(lines: &mut Vec<String>, analysis: &Analysis) {
+    if analysis.workspace_summaries.is_empty() {
+        return;
+    }
+
+    lines.push(String::new());
+    lines.push("Workspace summaries:".to_string());
+    append_section(
+        lines,
+        &analysis.workspace_summaries,
+        |item, _| {
+            format!(
+                "- {} ({}): {} imported packages, {} heavy dependencies, {} duplicate packages, ~{} KB potential saved",
+                item.name,
+                item.path,
+                item.imported_packages,
+                item.heavy_dependencies,
+                item.duplicate_packages,
+                item.potential_kb_saved
+            )
+        },
+        "- none",
+    );
 }
 
 #[derive(Clone)]

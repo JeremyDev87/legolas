@@ -73,6 +73,27 @@ fn dynamic_import_findings() -> Vec<serde_json::Value> {
     ]
 }
 
+fn workspace_summaries() -> Vec<serde_json::Value> {
+    vec![
+        json!({
+            "name": "admin-app",
+            "path": "apps/admin",
+            "importedPackages": 3,
+            "heavyDependencies": 2,
+            "duplicatePackages": 0,
+            "potentialKbSaved": 42
+        }),
+        json!({
+            "name": "storefront-app",
+            "path": "apps/storefront",
+            "importedPackages": 2,
+            "heavyDependencies": 1,
+            "duplicatePackages": 0,
+            "potentialKbSaved": 13
+        }),
+    ]
+}
+
 #[test]
 fn ci_fail_returns_exit_code_one_and_fixed_failure_prefix() {
     let basic_app = support::fixture_path("tests/fixtures/parity/basic-app");
@@ -181,6 +202,19 @@ fn ci_json_output_uses_machine_readable_gate_shape() {
 }
 
 #[test]
+fn ci_json_output_includes_workspace_summaries_for_monorepos() {
+    let workspace = support::fixture_path("tests/fixtures/monorepo/pnpm-workspace");
+    let output = run_cli(&["ci", &workspace.display().to_string(), "--json"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(1));
+    let ci = support::normalize_ci_json_output(&stdout(&output));
+    assert_eq!(ci["workspaceSummaries"], json!(workspace_summaries()));
+    assert_eq!(ci["overallStatus"], json!("Fail"));
+    assert_eq!(ci["passed"], json!(false));
+}
+
+#[test]
 fn ci_rejects_command_specific_numeric_flags() {
     let basic_app = support::fixture_path("tests/fixtures/parity/basic-app");
     let cases = [
@@ -282,6 +316,18 @@ Rule statuses: potentialKbSaved=Fail, duplicatePackageCount=Pass, dynamicImportC
         stderr(&output),
         "CI gate failed: overall status Fail (failing rules: potentialKbSaved, dynamicImportCount)\n"
     );
+}
+
+#[test]
+fn ci_text_output_includes_workspace_summaries_for_monorepos() {
+    let workspace = support::fixture_path("tests/fixtures/monorepo/pnpm-workspace");
+    let output = run_cli(&["ci", &workspace.display().to_string()]);
+
+    assert!(!output.status.success());
+    let stdout = stdout(&output);
+    assert!(stdout.contains("Workspace summaries:"));
+    assert!(stdout.contains("admin-app (apps/admin): 3 imported packages, 2 heavy dependencies, 0 duplicate packages, ~42 KB potential saved"));
+    assert!(stdout.contains("storefront-app (apps/storefront): 2 imported packages, 1 heavy dependencies, 0 duplicate packages, ~13 KB potential saved"));
 }
 
 fn dynamic_import_project(name: &str, dynamic_imports: usize) -> TempDir {

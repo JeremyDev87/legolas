@@ -81,6 +81,27 @@ fn dynamic_import_findings() -> Vec<serde_json::Value> {
     ]
 }
 
+fn workspace_summaries() -> Vec<serde_json::Value> {
+    vec![
+        json!({
+            "name": "admin-app",
+            "path": "apps/admin",
+            "importedPackages": 3,
+            "heavyDependencies": 2,
+            "duplicatePackages": 0,
+            "potentialKbSaved": 42
+        }),
+        json!({
+            "name": "storefront-app",
+            "path": "apps/storefront",
+            "importedPackages": 2,
+            "heavyDependencies": 1,
+            "duplicatePackages": 0,
+            "potentialKbSaved": 13
+        }),
+    ]
+}
+
 #[test]
 fn budget_text_output_uses_built_in_starter_thresholds() {
     let basic_app = support::fixture_path("tests/fixtures/parity/basic-app");
@@ -142,6 +163,17 @@ fn budget_json_output_has_a_stable_shape() {
         })
     );
     assert_eq!(stderr(&output), "");
+}
+
+#[test]
+fn budget_json_output_includes_workspace_summaries_for_monorepos() {
+    let workspace = support::fixture_path("tests/fixtures/monorepo/pnpm-workspace");
+    let output = run_cli(&["budget", &workspace.display().to_string(), "--json"]);
+
+    assert!(output.status.success());
+    let budget = support::normalize_budget_json_output(&stdout(&output));
+    assert_eq!(budget["workspaceSummaries"], json!(workspace_summaries()));
+    assert_eq!(budget["overallStatus"], json!("Fail"));
 }
 
 #[test]
@@ -274,6 +306,18 @@ fn budget_uses_discovered_config_from_project_root() {
         })
     );
     assert_eq!(stderr(&output), "");
+}
+
+#[test]
+fn budget_text_output_includes_workspace_summaries_for_monorepos() {
+    let workspace = support::fixture_path("tests/fixtures/monorepo/pnpm-workspace");
+    let output = run_cli(&["budget", &workspace.display().to_string()]);
+
+    assert!(output.status.success());
+    let stdout = stdout(&output);
+    assert!(stdout.contains("Workspace summaries:"));
+    assert!(stdout.contains("admin-app (apps/admin): 3 imported packages, 2 heavy dependencies, 0 duplicate packages, ~42 KB potential saved"));
+    assert!(stdout.contains("storefront-app (apps/storefront): 2 imported packages, 1 heavy dependencies, 0 duplicate packages, ~13 KB potential saved"));
 }
 
 #[test]
