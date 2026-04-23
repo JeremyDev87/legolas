@@ -114,6 +114,42 @@ fn matches_scan_json_oracle() {
 }
 
 #[test]
+fn scan_json_only_exposes_recommended_fix_for_safe_high_confidence_findings() {
+    let fixture = support::fixture_path("tests/fixtures/parity/basic-app");
+    let output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["scan", &fixture.display().to_string(), "--json"])
+        .output()
+        .expect("run scan --json");
+
+    assert!(output.status.success());
+    let analysis =
+        support::normalize_analysis_json_output(&String::from_utf8(output.stdout).expect("stdout"));
+
+    assert_eq!(
+        analysis["heavyDependencies"][0]["recommendedFix"]["kind"],
+        json!("lazy-load")
+    );
+    assert_eq!(
+        analysis["lazyLoadCandidates"][0].get("recommendedFix"),
+        None
+    );
+    assert_eq!(
+        analysis["lazyLoadCandidates"][1].get("recommendedFix"),
+        None
+    );
+    assert_eq!(
+        analysis["lazyLoadCandidates"][2].get("recommendedFix"),
+        None
+    );
+    assert_eq!(
+        analysis["duplicatePackages"][0]["recommendedFix"]["kind"],
+        json!("dedupe-package")
+    );
+    assert_eq!(String::from_utf8(output.stderr).expect("stderr"), "");
+}
+
+#[test]
 fn monorepo_scan_outputs_workspace_summaries_in_text_and_json() {
     let fixture = support::fixture_path("tests/fixtures/monorepo/pnpm-workspace");
 

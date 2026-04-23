@@ -232,17 +232,7 @@ fn rank_actions_maps_fix_kind_and_replacement_from_recommendation_shape() {
         .iter()
         .find(|item| item.finding_id == "heavy-dependency:moment")
         .expect("moment action");
-    assert_eq!(
-        moment.recommended_fix.as_ref().map(|fix| fix.kind.as_str()),
-        Some("replace-package")
-    );
-    assert_eq!(
-        moment
-            .recommended_fix
-            .as_ref()
-            .and_then(|fix| fix.replacement.as_deref()),
-        Some("date-fns or Day.js")
-    );
+    assert_eq!(moment.recommended_fix, None);
 }
 
 #[test]
@@ -270,6 +260,52 @@ fn rank_actions_dedupes_by_finding_id_not_recommended_fix_text() {
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0].finding_id, "tree-shaking:lodash-root-import");
     assert_eq!(actions[0].estimated_savings_kb, 26);
+}
+
+#[test]
+fn apply_action_plan_only_exposes_safe_fix_hints_for_high_confidence_findings() {
+    let mut analysis = Analysis {
+        heavy_dependencies: vec![heavy_dependency_with_recommendation(
+            "heavy-dependency:chart.js",
+            "chart.js",
+            160,
+            FindingConfidence::Low,
+            "Register only the chart primitives you use and lazy load dashboard surfaces.",
+        )],
+        lazy_load_candidates: vec![lazy_load_candidate(
+            "lazy-load:chart.js",
+            "chart.js",
+            120,
+            FindingConfidence::High,
+        )],
+        duplicate_packages: vec![duplicate_package(
+            "duplicate-package:lodash",
+            "lodash",
+            18,
+            FindingConfidence::High,
+        )],
+        ..Default::default()
+    };
+
+    apply_action_plan(&mut analysis);
+
+    assert_eq!(analysis.heavy_dependencies[0].finding.recommended_fix, None);
+    assert_eq!(
+        analysis.lazy_load_candidates[0]
+            .finding
+            .recommended_fix
+            .as_ref()
+            .map(|fix| fix.kind.as_str()),
+        Some("lazy-load")
+    );
+    assert_eq!(
+        analysis.duplicate_packages[0]
+            .finding
+            .recommended_fix
+            .as_ref()
+            .map(|fix| fix.kind.as_str()),
+        Some("dedupe-package")
+    );
 }
 
 #[test]

@@ -164,13 +164,6 @@
       "analysisSource": "heuristic",
       "confidence": "low",
       "actionPriority": 2,
-      "recommendedFix": {
-        "kind": "lazy-load",
-        "title": "Register only the chart primitives you use and lazy load dashboard surfaces.",
-        "targetFiles": [
-          "src/Dashboard.tsx"
-        ]
-      },
       "evidence": [
         {
           "kind": "source-file",
@@ -192,13 +185,6 @@
       "analysisSource": "heuristic",
       "confidence": "low",
       "actionPriority": 5,
-      "recommendedFix": {
-        "kind": "lazy-load",
-        "title": "Import narrowly from specific icon files or migrate to a more tree-shakable icon set.",
-        "targetFiles": [
-          "src/Dashboard.tsx"
-        ]
-      },
       "evidence": [
         {
           "kind": "source-file",
@@ -220,13 +206,6 @@
       "analysisSource": "heuristic",
       "confidence": "low",
       "actionPriority": 6,
-      "recommendedFix": {
-        "kind": "lazy-load",
-        "title": "Use per-method imports or switch to lodash-es when the toolchain supports it.",
-        "targetFiles": [
-          "src/Dashboard.tsx"
-        ]
-      },
       "evidence": [
         {
           "kind": "source-file",
