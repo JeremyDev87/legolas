@@ -86,6 +86,197 @@
         }
       }
     },
+    "regression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "baselineDiff"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "regression-only"
+        },
+        "baselineDiff": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "projectNamePrevious",
+            "projectNameCurrent",
+            "packageManagerPrevious",
+            "packageManagerCurrent",
+            "dependencyCountPrevious",
+            "dependencyCountCurrent",
+            "devDependencyCountPrevious",
+            "devDependencyCountCurrent",
+            "sourceFileCountPrevious",
+            "sourceFileCountCurrent",
+            "dynamicImportCountPrevious",
+            "dynamicImportCountCurrent",
+            "potentialKbSavedPrevious",
+            "potentialKbSavedCurrent"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "type": "integer",
+              "const": 5
+            },
+            "projectNamePrevious": {
+              "type": "string"
+            },
+            "projectNameCurrent": {
+              "type": "string"
+            },
+            "packageManagerPrevious": {
+              "type": "string"
+            },
+            "packageManagerCurrent": {
+              "type": "string"
+            },
+            "dependencyCountPrevious": {
+              "type": "integer"
+            },
+            "dependencyCountCurrent": {
+              "type": "integer"
+            },
+            "devDependencyCountPrevious": {
+              "type": "integer"
+            },
+            "devDependencyCountCurrent": {
+              "type": "integer"
+            },
+            "sourceFileCountPrevious": {
+              "type": "integer"
+            },
+            "sourceFileCountCurrent": {
+              "type": "integer"
+            },
+            "dynamicImportCountPrevious": {
+              "type": "integer"
+            },
+            "dynamicImportCountCurrent": {
+              "type": "integer"
+            },
+            "potentialKbSavedPrevious": {
+              "type": "integer"
+            },
+            "potentialKbSavedCurrent": {
+              "type": "integer"
+            },
+            "addedHeavyDependencyNames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removedHeavyDependencyNames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "worsenedHeavyDependencyNames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "addedTreeShakingWarningKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removedTreeShakingWarningKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "worsenedTreeShakingWarningKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "addedDuplicatePackageKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removedDuplicatePackageKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "worsenedDuplicatePackageKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "addedLazyLoadCandidateKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removedLazyLoadCandidateKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "worsenedLazyLoadCandidateKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "addedBoundaryWarningKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removedBoundaryWarningKeys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "addedUnusedDependencyCandidateNames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removedUnusedDependencyCandidateNames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "addedWarnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removedWarnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
     "workspaceSummaries": {
       "type": "array",
       "items": {

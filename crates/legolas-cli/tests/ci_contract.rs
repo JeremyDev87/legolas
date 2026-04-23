@@ -3,6 +3,7 @@ mod support;
 use std::{fs, path::Path};
 
 use assert_cmd::Command;
+use legolas_core::{analyze_project, diff_analysis, BaselineSnapshot};
 use serde_json::json;
 use tempfile::TempDir;
 
@@ -92,6 +93,17 @@ fn workspace_summaries() -> Vec<serde_json::Value> {
             "potentialKbSaved": 13
         }),
     ]
+}
+
+fn regression_baseline_diff() -> serde_json::Value {
+    let current_app = support::fixture_path("tests/fixtures/baseline/current-app");
+    let baseline_path = support::fixture_path("tests/fixtures/baseline/previous-scan.json");
+    let baseline: BaselineSnapshot =
+        serde_json::from_str(&fs::read_to_string(baseline_path).expect("read baseline fixture"))
+            .expect("parse baseline fixture");
+    let analysis = analyze_project(&current_app).expect("analyze current regression fixture");
+
+    serde_json::to_value(diff_analysis(&baseline, &analysis)).expect("serialize baseline diff")
 }
 
 #[test]
@@ -199,6 +211,34 @@ fn ci_json_output_uses_machine_readable_gate_shape() {
     assert_eq!(
         stderr(&output),
         "CI gate failed: overall status Fail (failing rules: potentialKbSaved, dynamicImportCount)\n"
+    );
+}
+
+#[test]
+fn regression_only_ci_json_includes_regression_envelope() {
+    let current_app = support::fixture_path("tests/fixtures/baseline/current-app");
+    let baseline_path = support::fixture_path("tests/fixtures/baseline/previous-scan.json");
+    let output = run_cli(&[
+        "ci",
+        &current_app.display().to_string(),
+        "--baseline",
+        &baseline_path.display().to_string(),
+        "--regression-only",
+        "--json",
+    ]);
+
+    assert!(output.status.success());
+    assert_eq!(stderr(&output), "");
+
+    let ci = support::normalize_ci_json_output(&stdout(&output));
+    assert_eq!(ci["passed"], json!(true));
+    assert_eq!(ci["overallStatus"], json!("Warn"));
+    assert_eq!(
+        ci["regression"],
+        json!({
+            "mode": "regression-only",
+            "baselineDiff": regression_baseline_diff()
+        })
     );
 }
 

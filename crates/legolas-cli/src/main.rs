@@ -120,6 +120,7 @@ fn run() -> Result<i32> {
                 budget_evaluation
                     .as_ref()
                     .expect("budget evaluation exists for ci command"),
+                regression_diff.as_ref(),
             ),
             _ => analysis_json_output(&output_analysis)?,
         };
@@ -253,7 +254,11 @@ fn budget_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEval
     Value::Object(output)
 }
 
-fn ci_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEvaluation) -> Value {
+fn ci_json_output(
+    analysis: &legolas_core::Analysis,
+    evaluation: &BudgetEvaluation,
+    regression_diff: Option<&legolas_core::BaselineDiff>,
+) -> Value {
     let mut output = Map::new();
     output.insert("schemaVersion".to_string(), json!(CI_SCHEMA_VERSION));
     output.insert("passed".to_string(), json!(!evaluation.has_failures()));
@@ -267,6 +272,16 @@ fn ci_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEvaluati
         output.insert(
             "workspaceSummaries".to_string(),
             json!(analysis.workspace_summaries),
+        );
+    }
+
+    if let Some(diff) = regression_diff {
+        output.insert(
+            "regression".to_string(),
+            json!({
+                "mode": "regression-only",
+                "baselineDiff": diff,
+            }),
         );
     }
 
