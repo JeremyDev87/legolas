@@ -317,7 +317,7 @@ fn finding_metadata_serializes_action_priority_and_recommended_fix_additively() 
     .with_confidence(FindingConfidence::High)
     .with_action_priority(1)
     .with_recommended_fix(RecommendedFix {
-        kind: "replace-package".to_string(),
+        kind: "narrow-import".to_string(),
         title: "Use per-method imports.".to_string(),
         target_files: vec!["src/App.tsx".to_string()],
         replacement: Some("lodash-es".to_string()),
@@ -333,7 +333,7 @@ fn finding_metadata_serializes_action_priority_and_recommended_fix_additively() 
             "confidence": "high",
             "actionPriority": 1,
             "recommendedFix": {
-                "kind": "replace-package",
+                "kind": "narrow-import",
                 "title": "Use per-method imports.",
                 "targetFiles": ["src/App.tsx"],
                 "replacement": "lodash-es"
