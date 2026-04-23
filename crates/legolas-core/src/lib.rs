@@ -9,6 +9,7 @@ pub mod confidence;
 pub mod config;
 pub mod error;
 pub mod findings;
+pub mod fix_hints;
 pub mod impact;
 pub mod import_scanner;
 pub mod lockfiles;
