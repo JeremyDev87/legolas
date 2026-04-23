@@ -65,12 +65,7 @@ fn analyze_project_populates_lazy_load_candidate_evidence() {
                 .with_detail("route-like UI surface matched `admin` keyword")]),
     );
     assert_eq!(candidate.finding.action_priority, Some(2));
-    assert_recommended_fix(
-        candidate.finding.recommended_fix.as_ref(),
-        "lazy-load",
-        &["src/AdminDashboard.tsx"],
-        None,
-    );
+    assert!(candidate.finding.recommended_fix.is_none());
 }
 
 #[test]
@@ -150,12 +145,7 @@ fn analyze_project_limits_lazy_load_evidence_to_candidate_files() {
                 .with_detail("route-like UI surface matched `dashboard` keyword")]),
     );
     assert_eq!(candidate.finding.action_priority, Some(2));
-    assert_recommended_fix(
-        candidate.finding.recommended_fix.as_ref(),
-        "lazy-load",
-        &["src/Dashboard.tsx"],
-        None,
-    );
+    assert!(candidate.finding.recommended_fix.is_none());
 }
 
 fn write_file(root: &std::path::Path, relative_path: &str, contents: &str) {

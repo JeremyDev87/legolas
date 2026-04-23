@@ -59,6 +59,9 @@ fn scan_and_optimize_reports_render_compact_evidence_lines() {
     assert!(optimize.contains(
         "4. Review lodash upfront bundle weight [hard | high confidence | ~72 KB]\n   recommended fix: narrow-import - Use per-method imports or switch to lodash-es when the toolchain supports it.\n   targets: src/Dashboard.tsx\n   replacement: lodash-es\n   evidence: src/Dashboard.tsx | specifier: lodash | static import; Root lodash imports are a classic source of tree-shaking misses."
     ));
+    assert!(!optimize.contains(
+        "2. Lazy load chart.js [medium | low confidence | ~120 KB]\n   recommended fix:"
+    ));
 }
 
 #[test]
@@ -98,9 +101,10 @@ fn scan_and_optimize_reports_only_render_the_first_evidence_line_per_finding() {
     let optimize = format_optimize_report(&analysis, 1);
     assert!(
         optimize.contains(
-            "1. Review chart.js upfront bundle weight [hard | low confidence | ~160 KB]\n   recommended fix: lazy-load - Register only the chart primitives you use and lazy load dashboard surfaces.\n   targets: src/Admin.tsx, src/Reports.tsx\n   evidence: src/Admin.tsx | specifier: chart.js | first evidence detail"
+            "1. Review chart.js upfront bundle weight [hard | low confidence | ~160 KB]\n   evidence: src/Admin.tsx | specifier: chart.js | first evidence detail"
         )
     );
+    assert!(!optimize.contains("recommended fix:"));
     assert!(!optimize.contains("second evidence detail"));
 }
 

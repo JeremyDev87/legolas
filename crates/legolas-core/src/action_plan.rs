@@ -2,7 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     findings::{FindingConfidence, FindingMetadata},
-    models::{ActionDifficulty, ActionPlanItem, Analysis, RecommendedFix},
+    fix_hints::{
+        dedupe_resolution_fix_hint, dynamic_import_fix_hint, route_split_fix_hint,
+        subpath_import_fix_hint,
+    },
+    models::{
+        ActionDifficulty, ActionPlanItem, Analysis, DuplicatePackage, HeavyDependency,
+        LazyLoadCandidate, RecommendedFix, TreeShakingWarning,
+    },
 };
 
 pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
@@ -14,12 +21,7 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
             &item.finding,
             item.estimated_kb,
             ActionDifficulty::Hard,
-            Some(recommended_fix(
-                recommended_fix_kind(&item.name, &item.recommendation),
-                item.recommendation.clone(),
-                item.imported_by.clone(),
-                &item.name,
-            )),
+            heavy_dependency_fix(item),
         );
     }
 
@@ -29,12 +31,7 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
             &item.finding,
             item.estimated_savings_kb,
             ActionDifficulty::Medium,
-            Some(recommended_fix(
-                "lazy-load",
-                item.recommendation.clone(),
-                item.files.clone(),
-                &item.name,
-            )),
+            lazy_load_fix(item),
         );
     }
 
@@ -44,12 +41,7 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
             &item.finding,
             item.estimated_kb,
             ActionDifficulty::Easy,
-            Some(recommended_fix(
-                "narrow-import",
-                item.recommendation.clone(),
-                item.files.clone(),
-                &item.package_name,
-            )),
+            tree_shaking_fix(item),
         );
     }
 
@@ -59,12 +51,7 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
             &item.finding,
             item.estimated_extra_kb,
             ActionDifficulty::Medium,
-            Some(RecommendedFix {
-                kind: "dedupe-package".to_string(),
-                title: format!("Deduplicate {} to one installed version.", item.name),
-                target_files: Vec::new(),
-                replacement: None,
-            }),
+            duplicate_package_fix(item),
         );
     }
 
@@ -134,27 +121,6 @@ fn push_action(
     });
 }
 
-fn recommended_fix(
-    kind: &str,
-    title: String,
-    target_files: Vec<String>,
-    package_name: &str,
-) -> RecommendedFix {
-    RecommendedFix {
-        kind: kind.to_string(),
-        title,
-        target_files: normalized_files(target_files),
-        replacement: replacement_candidate(kind, package_name),
-    }
-}
-
-fn normalized_files(files: Vec<String>) -> Vec<String> {
-    let mut files = files;
-    files.sort();
-    files.dedup();
-    files
-}
-
 fn apply_action_metadata(
     finding: &mut FindingMetadata,
     action_by_id: &BTreeMap<String, ActionPlanItem>,
@@ -174,39 +140,95 @@ fn apply_action_metadata(
     finding.recommended_fix = action.recommended_fix.clone();
 }
 
-fn recommended_fix_kind(package_name: &str, recommendation: &str) -> &'static str {
+fn heavy_dependency_fix(item: &HeavyDependency) -> Option<RecommendedFix> {
+    match supported_heavy_dependency_fix_kind(&item.name, &item.recommendation) {
+        Some(SupportedFixHintKind::DynamicImport) => dynamic_import_fix_hint(
+            &item.finding,
+            item.recommendation.clone(),
+            item.imported_by.clone(),
+        ),
+        Some(SupportedFixHintKind::SubpathImport) => subpath_import_fix_hint(
+            &item.finding,
+            item.recommendation.clone(),
+            item.imported_by.clone(),
+            replacement_candidate("narrow-import", &item.name),
+        ),
+        Some(SupportedFixHintKind::RouteSplit) => route_split_fix_hint(
+            &item.finding,
+            item.recommendation.clone(),
+            item.imported_by.clone(),
+        ),
+        None => None,
+    }
+}
+
+fn lazy_load_fix(item: &LazyLoadCandidate) -> Option<RecommendedFix> {
+    dynamic_import_fix_hint(
+        &item.finding,
+        item.recommendation.clone(),
+        item.files.clone(),
+    )
+}
+
+fn tree_shaking_fix(item: &TreeShakingWarning) -> Option<RecommendedFix> {
+    subpath_import_fix_hint(
+        &item.finding,
+        item.recommendation.clone(),
+        item.files.clone(),
+        replacement_candidate("narrow-import", &item.package_name),
+    )
+}
+
+fn duplicate_package_fix(item: &DuplicatePackage) -> Option<RecommendedFix> {
+    dedupe_resolution_fix_hint(
+        &item.finding,
+        format!("Deduplicate {} to one installed version.", item.name),
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SupportedFixHintKind {
+    DynamicImport,
+    SubpathImport,
+    RouteSplit,
+}
+
+fn supported_heavy_dependency_fix_kind(
+    package_name: &str,
+    recommendation: &str,
+) -> Option<SupportedFixHintKind> {
     let normalized = recommendation.to_ascii_lowercase();
 
     if package_name == "moment" {
-        return "replace-package";
+        return None;
     }
 
     if normalized.contains("server boundar") {
-        return "move-boundary";
+        return None;
     }
 
     if normalized.contains("lazy load")
         || normalized.contains("on demand")
         || normalized.contains("defer")
     {
-        return "lazy-load";
+        return Some(SupportedFixHintKind::DynamicImport);
     }
 
     if normalized.contains("route")
         || normalized.contains("split ")
         || normalized.contains("split-")
     {
-        return "split-route";
+        return Some(SupportedFixHintKind::RouteSplit);
     }
 
     if normalized.contains("import")
         || normalized.contains("modular")
         || normalized.contains("register only")
     {
-        return "narrow-import";
+        return Some(SupportedFixHintKind::SubpathImport);
     }
 
-    "reduce-usage"
+    None
 }
 
 fn replacement_candidate(kind: &str, package_name: &str) -> Option<String> {

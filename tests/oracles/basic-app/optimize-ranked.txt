@@ -5,8 +5,6 @@ Legolas optimize for basic-parity-app
    targets: src/Dashboard.tsx
    evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
 2. Lazy load chart.js [medium | low confidence | ~120 KB]
-   recommended fix: lazy-load - Register only the chart primitives you use and lazy load dashboard surfaces.
-   targets: src/Dashboard.tsx
    evidence: src/Dashboard.tsx | specifier: chart.js | route-like UI surface matched `dashboard` keyword
 3. Review react-icons upfront bundle weight [hard | high confidence | ~90 KB]
    recommended fix: narrow-import - Import narrowly from specific icon files or migrate to a more tree-shakable icon set.
@@ -18,8 +16,6 @@ Legolas optimize for basic-parity-app
    replacement: lodash-es
    evidence: src/Dashboard.tsx | specifier: lodash | static import; Root lodash imports are a classic source of tree-shaking misses.
 5. Lazy load react-icons [medium | low confidence | ~68 KB]
-   recommended fix: lazy-load - Import narrowly from specific icon files or migrate to a more tree-shakable icon set.
-   targets: src/Dashboard.tsx
    evidence: src/Dashboard.tsx | specifier: react-icons | route-like UI surface matched `dashboard` keyword
 
 Projected savings: ~366 KB, with directional confidence.
