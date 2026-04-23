@@ -99,8 +99,15 @@ fn matches_scan_json_oracle() {
         .expect("run scan --json");
 
     assert!(output.status.success());
+    let mut analysis =
+        support::normalize_analysis_json_output(&String::from_utf8(output.stdout).expect("stdout"));
+    assert_eq!(analysis["schemaVersion"], json!("legolas.analysis.v1"));
+    analysis
+        .as_object_mut()
+        .expect("analysis object")
+        .remove("schemaVersion");
     assert_eq!(
-        support::normalize_analysis_json_output(&String::from_utf8(output.stdout).expect("stdout")),
+        analysis,
         support::normalize_analysis_json_output(&support::read_oracle("basic-app/scan.json"))
     );
     assert_eq!(String::from_utf8(output.stderr).expect("stderr"), "");

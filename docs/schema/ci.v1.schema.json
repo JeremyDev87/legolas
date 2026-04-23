@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JeremyDev87/legolas/blob/master/docs/schema/ci.v1.schema.json",
+  "title": "Legolas CI JSON v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "passed",
+    "overallStatus",
+    "rules"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "legolas.ci.v1"
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "Pass",
+        "Warn",
+        "Fail"
+      ]
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "actual",
+          "warnAt",
+          "failAt",
+          "status",
+          "triggeredFindings"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "actual": {
+            "type": "integer"
+          },
+          "warnAt": {
+            "type": "integer"
+          },
+          "failAt": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Pass",
+              "Warn",
+              "Fail"
+            ]
+          },
+          "triggeredFindings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "findingId",
+                "analysisSource",
+                "confidence"
+              ],
+              "properties": {
+                "findingId": {
+                  "type": "string"
+                },
+                "analysisSource": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "workspaceSummaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "path",
+          "importedPackages",
+          "heavyDependencies",
+          "duplicatePackages",
+          "potentialKbSaved"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "importedPackages": {
+            "type": "integer"
+          },
+          "heavyDependencies": {
+            "type": "integer"
+          },
+          "duplicatePackages": {
+            "type": "integer"
+          },
+          "potentialKbSaved": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

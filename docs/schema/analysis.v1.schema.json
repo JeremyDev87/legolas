@@ -1,0 +1,728 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JeremyDev87/legolas/blob/master/docs/schema/analysis.v1.schema.json",
+  "title": "Legolas Analysis JSON v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projectRoot",
+    "packageManager",
+    "frameworks",
+    "bundleArtifacts",
+    "packageSummary",
+    "sourceSummary",
+    "heavyDependencies",
+    "duplicatePackages",
+    "lazyLoadCandidates",
+    "treeShakingWarnings",
+    "unusedDependencyCandidates",
+    "warnings",
+    "impact",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "legolas.analysis.v1"
+    },
+    "projectRoot": {
+      "type": "string"
+    },
+    "packageManager": {
+      "type": "string"
+    },
+    "frameworks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "bundleArtifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifactSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bundler": {
+          "type": "string"
+        },
+        "entrypoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "totalBytes": {
+          "type": "integer"
+        }
+      }
+    },
+    "packageSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "dependencyCount",
+        "devDependencyCount"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "dependencyCount": {
+          "type": "integer"
+        },
+        "devDependencyCount": {
+          "type": "integer"
+        }
+      }
+    },
+    "sourceSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filesScanned",
+        "importedPackages",
+        "dynamicImports"
+      ],
+      "properties": {
+        "filesScanned": {
+          "type": "integer"
+        },
+        "importedPackages": {
+          "type": "integer"
+        },
+        "dynamicImports": {
+          "type": "integer"
+        }
+      }
+    },
+    "boundaryWarnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "message",
+          "recommendation"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "findingId": {
+            "type": "string"
+          },
+          "analysisSource": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "actionPriority": {
+            "type": "integer"
+          },
+          "recommendedFix": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "title",
+              "targetFiles"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "targetFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "replacement": {
+                "type": "string"
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "file": {
+                  "type": "string"
+                },
+                "specifier": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "workspaceSummaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "path",
+          "importedPackages",
+          "heavyDependencies",
+          "duplicatePackages",
+          "potentialKbSaved"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "importedPackages": {
+            "type": "integer"
+          },
+          "heavyDependencies": {
+            "type": "integer"
+          },
+          "duplicatePackages": {
+            "type": "integer"
+          },
+          "potentialKbSaved": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "heavyDependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "versionRange",
+          "estimatedKb",
+          "category",
+          "rationale",
+          "recommendation",
+          "importedBy",
+          "dynamicImportedBy",
+          "importCount"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "versionRange": {
+            "type": "string"
+          },
+          "estimatedKb": {
+            "type": "integer"
+          },
+          "category": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "importedBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dynamicImportedBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "importCount": {
+            "type": "integer"
+          },
+          "findingId": {
+            "type": "string"
+          },
+          "analysisSource": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "actionPriority": {
+            "type": "integer"
+          },
+          "recommendedFix": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "title",
+              "targetFiles"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "targetFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "replacement": {
+                "type": "string"
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "file": {
+                  "type": "string"
+                },
+                "specifier": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "duplicatePackages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "versions",
+          "count",
+          "estimatedExtraKb"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer"
+          },
+          "estimatedExtraKb": {
+            "type": "integer"
+          },
+          "origins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "rootRequester",
+                "viaChain"
+              ],
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "rootRequester": {
+                  "type": "string"
+                },
+                "viaChain": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "findingId": {
+            "type": "string"
+          },
+          "analysisSource": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "actionPriority": {
+            "type": "integer"
+          },
+          "recommendedFix": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "title",
+              "targetFiles"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "targetFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "replacement": {
+                "type": "string"
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "file": {
+                  "type": "string"
+                },
+                "specifier": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "lazyLoadCandidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "estimatedSavingsKb",
+          "recommendation",
+          "files",
+          "reason"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "estimatedSavingsKb": {
+            "type": "integer"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          },
+          "findingId": {
+            "type": "string"
+          },
+          "analysisSource": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "actionPriority": {
+            "type": "integer"
+          },
+          "recommendedFix": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "title",
+              "targetFiles"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "targetFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "replacement": {
+                "type": "string"
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "file": {
+                  "type": "string"
+                },
+                "specifier": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "treeShakingWarnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "packageName",
+          "message",
+          "recommendation",
+          "estimatedKb",
+          "files"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "packageName": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "estimatedKb": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "findingId": {
+            "type": "string"
+          },
+          "analysisSource": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string"
+          },
+          "actionPriority": {
+            "type": "integer"
+          },
+          "recommendedFix": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "title",
+              "targetFiles"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "targetFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "replacement": {
+                "type": "string"
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "file": {
+                  "type": "string"
+                },
+                "specifier": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "unusedDependencyCandidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "versionRange"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "versionRange": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "potentialKbSaved",
+        "estimatedLcpImprovementMs",
+        "confidence",
+        "summary"
+      ],
+      "properties": {
+        "potentialKbSaved": {
+          "type": "integer"
+        },
+        "estimatedLcpImprovementMs": {
+          "type": "integer"
+        },
+        "confidence": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "generatedAt"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "generatedAt": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

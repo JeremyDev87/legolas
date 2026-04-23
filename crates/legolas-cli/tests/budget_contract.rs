@@ -133,6 +133,7 @@ fn budget_json_output_has_a_stable_shape() {
     assert_eq!(
         support::normalize_budget_json_output(&stdout(&output)),
         json!({
+            "schemaVersion": "legolas.budget.v1",
             "overallStatus": "Fail",
             "rules": [
                 {
@@ -210,6 +211,7 @@ fn budget_uses_config_threshold_overrides_and_starter_fallbacks_together() {
     assert_eq!(
         support::normalize_budget_json_output(&stdout(&output)),
         json!({
+            "schemaVersion": "legolas.budget.v1",
             "overallStatus": "Fail",
             "rules": [
                 {
@@ -276,6 +278,7 @@ fn budget_uses_discovered_config_from_project_root() {
     assert_eq!(
         support::normalize_budget_json_output(&stdout(&output)),
         json!({
+            "schemaVersion": "legolas.budget.v1",
             "overallStatus": "Fail",
             "rules": [
                 {

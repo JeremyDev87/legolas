@@ -21,6 +21,10 @@ use legolas_core::{
 };
 use serde_json::{json, Map, Value};
 
+const ANALYSIS_SCHEMA_VERSION: &str = "legolas.analysis.v1";
+const BUDGET_SCHEMA_VERSION: &str = "legolas.budget.v1";
+const CI_SCHEMA_VERSION: &str = "legolas.ci.v1";
+
 const HELP_TEXT: &str = r#"Legolas
 Slim bundles with precision.
 
@@ -104,27 +108,22 @@ fn run() -> Result<i32> {
     }
 
     if parsed.json {
-        match command {
-            Command::Budget => println!(
-                "{}",
-                serde_json::to_string_pretty(&budget_json_output(
-                    &output_analysis,
-                    budget_evaluation
-                        .as_ref()
-                        .expect("budget evaluation exists for budget command"),
-                ))?
+        let output = match command {
+            Command::Budget => budget_json_output(
+                &output_analysis,
+                budget_evaluation
+                    .as_ref()
+                    .expect("budget evaluation exists for budget command"),
             ),
-            Command::Ci => println!(
-                "{}",
-                serde_json::to_string_pretty(&ci_json_output(
-                    &output_analysis,
-                    budget_evaluation
-                        .as_ref()
-                        .expect("budget evaluation exists for ci command"),
-                ))?
+            Command::Ci => ci_json_output(
+                &output_analysis,
+                budget_evaluation
+                    .as_ref()
+                    .expect("budget evaluation exists for ci command"),
             ),
-            _ => println!("{}", serde_json::to_string_pretty(&output_analysis)?),
-        }
+            _ => analysis_json_output(&output_analysis)?,
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
 
         if matches!(command, Command::Ci)
             && budget_evaluation
@@ -227,8 +226,17 @@ fn write_baseline_snapshot(path: &Path, analysis: &legolas_core::Analysis) -> Re
     fs::write(path, serde_json::to_string_pretty(&snapshot)?).map_err(Into::into)
 }
 
+fn analysis_json_output(analysis: &legolas_core::Analysis) -> Result<Value> {
+    let mut output = Map::new();
+    output.insert("schemaVersion".to_string(), json!(ANALYSIS_SCHEMA_VERSION));
+    output.extend(analysis_value_to_object(analysis)?);
+
+    Ok(Value::Object(output))
+}
+
 fn budget_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEvaluation) -> Value {
     let mut output = Map::new();
+    output.insert("schemaVersion".to_string(), json!(BUDGET_SCHEMA_VERSION));
     output.insert(
         "overallStatus".to_string(),
         json!(evaluation.overall_status),
@@ -247,6 +255,7 @@ fn budget_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEval
 
 fn ci_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEvaluation) -> Value {
     let mut output = Map::new();
+    output.insert("schemaVersion".to_string(), json!(CI_SCHEMA_VERSION));
     output.insert("passed".to_string(), json!(!evaluation.has_failures()));
     output.insert(
         "overallStatus".to_string(),
@@ -262,6 +271,14 @@ fn ci_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEvaluati
     }
 
     Value::Object(output)
+}
+
+fn analysis_value_to_object(analysis: &legolas_core::Analysis) -> Result<Map<String, Value>> {
+    let Value::Object(object) = serde_json::to_value(analysis)? else {
+        unreachable!("serialized JSON output must be an object");
+    };
+
+    Ok(object)
 }
 
 fn read_package_version() -> Result<String> {

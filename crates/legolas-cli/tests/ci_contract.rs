@@ -165,6 +165,7 @@ fn ci_json_output_uses_machine_readable_gate_shape() {
     assert_eq!(
         support::normalize_ci_json_output(&stdout(&output)),
         json!({
+            "schemaVersion": "legolas.ci.v1",
             "passed": false,
             "overallStatus": "Fail",
             "rules": [

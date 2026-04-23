@@ -17,6 +17,7 @@
   "type": "module",
   "files": [
     "bin",
+    "docs/schema",
     "vendor"
   ],
   "os": [
