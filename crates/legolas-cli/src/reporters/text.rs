@@ -1,6 +1,6 @@
 use legolas_core::{
-    budget::BudgetEvaluation, rank_actions, ActionDifficulty, Analysis, FindingConfidence,
-    FindingEvidence, FindingMetadata, RecommendedFix,
+    boundaries::BoundaryWarning, budget::BudgetEvaluation, rank_actions, ActionDifficulty,
+    Analysis, FindingConfidence, FindingEvidence, FindingMetadata, RecommendedFix,
 };
 use std::collections::BTreeMap;
 
@@ -28,6 +28,7 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
     ));
     append_workspace_summaries(&mut lines, analysis);
     lines.push(String::new());
+    append_boundary_warnings(&mut lines, &analysis.boundary_warnings);
     lines.push(format!(
         "Potential payload reduction: ~{} KB",
         analysis.impact.potential_kb_saved
@@ -734,5 +735,79 @@ fn append_warnings(lines: &mut Vec<String>, warnings: &[String]) {
     lines.push("Warnings:".to_string());
     for warning in warnings {
         lines.push(format!("- {warning}"));
+    }
+}
+
+fn append_boundary_warnings(lines: &mut Vec<String>, warnings: &[BoundaryWarning]) {
+    if warnings.is_empty() {
+        return;
+    }
+
+    lines.push("Boundary warnings:".to_string());
+    for warning in warnings {
+        lines.push(format!("- {}", warning.message));
+        lines.push(format!("  recommendation: {}", warning.recommendation));
+        for evidence in display_evidence_lines(&warning.finding) {
+            lines.push(format!("  evidence: {evidence}"));
+        }
+    }
+    lines.push(String::new());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_scan_report;
+    use legolas_core::{
+        boundaries::BoundaryWarning, Analysis, FindingAnalysisSource, FindingConfidence,
+        FindingEvidence, FindingMetadata, Impact, Metadata, PackageSummary, SourceSummary,
+    };
+
+    #[test]
+    fn format_scan_report_renders_boundary_warnings() {
+        let analysis = Analysis {
+            package_summary: PackageSummary {
+                name: "boundary-app".to_string(),
+                ..Default::default()
+            },
+            source_summary: SourceSummary {
+                files_scanned: 1,
+                imported_packages: 1,
+                ..Default::default()
+            },
+            impact: Impact {
+                summary: "summary".to_string(),
+                ..Default::default()
+            },
+            metadata: Metadata {
+                mode: "heuristic".to_string(),
+                generated_at: "2026-04-24T00:00:00Z".to_string(),
+            },
+            boundary_warnings: vec![BoundaryWarning {
+                message: "RSC surface `app/page.tsx` imports the server-only `server-only` module."
+                    .to_string(),
+                recommendation:
+                    "Keep server-only guards in server-only utilities and avoid importing them directly from RSC entrypoints."
+                        .to_string(),
+                finding: FindingMetadata::new(
+                    "boundary:rsc-server-only",
+                    FindingAnalysisSource::SourceImport,
+                )
+                .with_confidence(FindingConfidence::High)
+                .with_action_priority(1)
+                .with_evidence([FindingEvidence::new("source-file")
+                    .with_file("app/page.tsx")
+                    .with_specifier("server-only")
+                    .with_detail("RSC surface imports a server-only module")]),
+            }],
+            ..Default::default()
+        };
+
+        let report = format_scan_report(&analysis);
+
+        assert!(report.contains("Boundary warnings:"));
+        assert!(report
+            .contains("RSC surface `app/page.tsx` imports the server-only `server-only` module."));
+        assert!(report.contains("recommendation: Keep server-only guards in server-only utilities and avoid importing them directly from RSC entrypoints."));
+        assert!(report.contains("evidence: app/page.tsx | specifier: server-only | RSC surface imports a server-only module"));
     }
 }

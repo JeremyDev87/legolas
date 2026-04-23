@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     findings::{FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata},
     import_scanner::SourceAnalysis,
+    route_context::{classify_route_context, RouteContextKind},
 };
 
 static SERVER_ONLY_PACKAGES: OnceLock<Vec<&'static str>> = OnceLock::new();
@@ -65,6 +66,18 @@ pub fn collect_boundary_warnings(context: &Phase8SeedContext<'_>) -> Vec<Boundar
         }
     }
 
+    for (rsc_file, specifier) in collect_server_only_rsc_imports(
+        context.project_root,
+        context.frameworks,
+        next_client_surface_enabled,
+        context.source_analysis,
+    ) {
+        let key = format!("{rsc_file}:{specifier}:rsc");
+        if seen.insert(key) {
+            warnings.push(build_rsc_boundary_warning(&specifier, &rsc_file));
+        }
+    }
+
     for (client_file, specifier) in
         collect_node_prefix_client_imports(context.project_root, next_client_surface_enabled)
     {
@@ -88,6 +101,24 @@ pub fn collect_boundary_warnings(context: &Phase8SeedContext<'_>) -> Vec<Boundar
     warnings
 }
 
+fn collect_server_only_rsc_imports(
+    project_root: &Path,
+    frameworks: &[String],
+    next_client_surface_enabled: bool,
+    source_analysis: &SourceAnalysis,
+) -> Vec<(String, String)> {
+    let Some(record) = source_analysis.by_package.get("server-only") else {
+        return Vec::new();
+    };
+
+    record
+        .files
+        .iter()
+        .filter(|file| is_rsc_surface(project_root, frameworks, file, next_client_surface_enabled))
+        .map(|file| (file.clone(), String::from("server-only")))
+        .collect()
+}
+
 fn build_boundary_warning(
     package_name: &str,
     raw_specifier: &str,
@@ -109,6 +140,27 @@ fn build_boundary_warning(
             .with_file(client_file)
             .with_specifier(raw_specifier)
             .with_detail("client surface imports a Node-only module")]),
+    }
+}
+
+fn build_rsc_boundary_warning(specifier: &str, rsc_file: &str) -> BoundaryWarning {
+    BoundaryWarning {
+        message: format!(
+            "RSC surface `{rsc_file}` imports the server-only `{specifier}` module."
+        ),
+        recommendation:
+            "Keep server-only guards in server-only utilities and avoid importing them directly from RSC entrypoints."
+                .to_string(),
+        finding: FindingMetadata::new(
+            "boundary:rsc-server-only",
+            FindingAnalysisSource::SourceImport,
+        )
+        .with_confidence(FindingConfidence::High)
+        .with_action_priority(1)
+        .with_evidence([FindingEvidence::new("source-file")
+            .with_file(rsc_file)
+            .with_specifier(specifier)
+            .with_detail("RSC surface imports a server-only module")]),
     }
 }
 
@@ -151,6 +203,24 @@ fn is_client_surface(
     }
 
     next_client_surface_enabled && has_use_client_directive(project_root.join(relative_path))
+}
+
+fn is_rsc_surface(
+    project_root: &Path,
+    frameworks: &[String],
+    relative_path: &str,
+    next_client_surface_enabled: bool,
+) -> bool {
+    if !next_client_surface_enabled || is_client_surface(project_root, relative_path, true) {
+        return false;
+    }
+
+    matches!(
+        classify_route_context(project_root, frameworks, Path::new(relative_path)),
+        RouteContextKind::RoutePage
+            | RouteContextKind::RouteLayout
+            | RouteContextKind::AdminSurface
+    )
 }
 
 fn collect_node_prefix_client_imports(
