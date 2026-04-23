@@ -6,7 +6,7 @@ const projectRoot = fileURLToPath(new URL("..", import.meta.url));
 
 const rootAllowlist = new Set(["LICENSE", "package.json"]);
 const rootReadmePattern = /^README(\.[^.]+)?\.md$/i;
-const packageDirs = ["bin", "vendor"];
+const packageDirs = ["bin", "docs/schema", "vendor"];
 const vendorReadmePath = "vendor/README.md";
 const vendorBinaryPattern = /^vendor\/[^/]+\/legolas(?:\.exe)?$/;
 
