@@ -79,6 +79,32 @@ fn ci_json_matches_ci_schema_doc() {
     assert_matches_schema(&value, &schema, "$");
 }
 
+#[test]
+fn regression_only_ci_json_matches_ci_schema_doc() {
+    let fixture = support::fixture_path("tests/fixtures/baseline/current-app");
+    let baseline = support::fixture_path("tests/fixtures/baseline/previous-scan.json");
+    let output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args([
+            "ci",
+            &fixture.display().to_string(),
+            "--baseline",
+            &baseline.display().to_string(),
+            "--regression-only",
+            "--json",
+        ])
+        .output()
+        .expect("run regression ci --json");
+
+    assert!(output.status.success());
+    let output = String::from_utf8(output.stdout).expect("stdout");
+    let value = serde_json::from_str::<Value>(&output).expect("parse regression ci json");
+    let schema = read_schema("ci.v1.schema.json");
+
+    assert_eq!(value["schemaVersion"], json!(CI_SCHEMA_VERSION));
+    assert_matches_schema(&value, &schema, "$");
+}
+
 fn read_schema(relative_path: &str) -> Value {
     let schema_path = support::workspace_root()
         .join("docs")
