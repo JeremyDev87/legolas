@@ -107,6 +107,55 @@ fn matches_scan_json_oracle() {
 }
 
 #[test]
+fn monorepo_scan_outputs_workspace_summaries_in_text_and_json() {
+    let fixture = support::fixture_path("tests/fixtures/monorepo/pnpm-workspace");
+
+    let text_output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["scan", &fixture.display().to_string()])
+        .output()
+        .expect("run monorepo scan");
+    assert!(text_output.status.success());
+    let text_stdout = String::from_utf8(text_output.stdout).expect("stdout");
+    assert!(text_stdout.contains("Workspace summaries:"));
+    assert!(text_stdout.contains("admin-app (apps/admin): 3 imported packages, 2 heavy dependencies, 0 duplicate packages, ~42 KB potential saved"));
+    assert!(text_stdout.contains("storefront-app (apps/storefront): 2 imported packages, 1 heavy dependencies, 0 duplicate packages, ~13 KB potential saved"));
+    assert_eq!(String::from_utf8(text_output.stderr).expect("stderr"), "");
+
+    let json_output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["scan", &fixture.display().to_string(), "--json"])
+        .output()
+        .expect("run monorepo scan --json");
+    assert!(json_output.status.success());
+    let analysis = support::normalize_analysis_json_output(
+        &String::from_utf8(json_output.stdout).expect("stdout"),
+    );
+    assert_eq!(
+        analysis["workspaceSummaries"],
+        json!([
+            {
+                "name": "admin-app",
+                "path": "apps/admin",
+                "importedPackages": 3,
+                "heavyDependencies": 2,
+                "duplicatePackages": 0,
+                "potentialKbSaved": 42
+            },
+            {
+                "name": "storefront-app",
+                "path": "apps/storefront",
+                "importedPackages": 2,
+                "heavyDependencies": 1,
+                "duplicatePackages": 0,
+                "potentialKbSaved": 13
+            }
+        ])
+    );
+    assert_eq!(String::from_utf8(json_output.stderr).expect("stderr"), "");
+}
+
+#[test]
 fn merge_app_scan_json_exposes_additive_artifact_contract() {
     let fixture = support::fixture_path("tests/fixtures/artifacts/merge-app");
     let output = Command::cargo_bin("legolas-cli")

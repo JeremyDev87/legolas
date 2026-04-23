@@ -19,7 +19,7 @@ use legolas_core::{
     impact::estimate_impact,
     LegolasError, Result,
 };
-use serde_json::json;
+use serde_json::{json, Map, Value};
 
 const HELP_TEXT: &str = r#"Legolas
 Slim bundles with precision.
@@ -107,28 +107,21 @@ fn run() -> Result<i32> {
         match command {
             Command::Budget => println!(
                 "{}",
-                serde_json::to_string_pretty(
+                serde_json::to_string_pretty(&budget_json_output(
+                    &output_analysis,
                     budget_evaluation
                         .as_ref()
                         .expect("budget evaluation exists for budget command"),
-                )?
+                ))?
             ),
             Command::Ci => println!(
                 "{}",
-                serde_json::to_string_pretty(&json!({
-                    "passed": !budget_evaluation
+                serde_json::to_string_pretty(&ci_json_output(
+                    &output_analysis,
+                    budget_evaluation
                         .as_ref()
-                        .expect("budget evaluation exists for ci command")
-                        .has_failures(),
-                    "overallStatus": budget_evaluation
-                        .as_ref()
-                        .expect("budget evaluation exists for ci command")
-                        .overall_status,
-                    "rules": budget_evaluation
-                        .as_ref()
-                        .expect("budget evaluation exists for ci command")
-                        .rules,
-                }))?
+                        .expect("budget evaluation exists for ci command"),
+                ))?
             ),
             _ => println!("{}", serde_json::to_string_pretty(&output_analysis)?),
         }
@@ -232,6 +225,43 @@ fn resolve_baseline_snapshot(parsed: &argv::CliArgs) -> Result<Option<BaselineSn
 fn write_baseline_snapshot(path: &Path, analysis: &legolas_core::Analysis) -> Result<()> {
     let snapshot = BaselineSnapshot::from_analysis(analysis);
     fs::write(path, serde_json::to_string_pretty(&snapshot)?).map_err(Into::into)
+}
+
+fn budget_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEvaluation) -> Value {
+    let mut output = Map::new();
+    output.insert(
+        "overallStatus".to_string(),
+        json!(evaluation.overall_status),
+    );
+    output.insert("rules".to_string(), json!(evaluation.rules));
+
+    if !analysis.workspace_summaries.is_empty() {
+        output.insert(
+            "workspaceSummaries".to_string(),
+            json!(analysis.workspace_summaries),
+        );
+    }
+
+    Value::Object(output)
+}
+
+fn ci_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEvaluation) -> Value {
+    let mut output = Map::new();
+    output.insert("passed".to_string(), json!(!evaluation.has_failures()));
+    output.insert(
+        "overallStatus".to_string(),
+        json!(evaluation.overall_status),
+    );
+    output.insert("rules".to_string(), json!(evaluation.rules));
+
+    if !analysis.workspace_summaries.is_empty() {
+        output.insert(
+            "workspaceSummaries".to_string(),
+            json!(analysis.workspace_summaries),
+        );
+    }
+
+    Value::Object(output)
 }
 
 fn read_package_version() -> Result<String> {
