@@ -14,10 +14,10 @@ pub enum FixHintKind {
 impl FixHintKind {
     fn as_str(self) -> &'static str {
         match self {
-            FixHintKind::DynamicImport => "dynamic-import",
-            FixHintKind::SubpathImport => "subpath-import",
-            FixHintKind::RouteSplit => "route-split",
-            FixHintKind::DedupeResolution => "dedupe-resolution",
+            FixHintKind::DynamicImport => "lazy-load",
+            FixHintKind::SubpathImport => "narrow-import",
+            FixHintKind::RouteSplit => "split-route",
+            FixHintKind::DedupeResolution => "dedupe-package",
         }
     }
 }
@@ -97,7 +97,11 @@ pub fn high_confidence_fix_hint(
 }
 
 fn normalized_files(files: Vec<String>) -> Vec<String> {
-    let mut files = files;
+    let mut files = files
+        .into_iter()
+        .map(|file| file.trim().to_string())
+        .filter(|file| !file.is_empty())
+        .collect::<Vec<_>>();
     files.sort();
     files.dedup();
     files

@@ -26,7 +26,7 @@ fn dynamic_import_fix_hint_requires_high_confidence_and_normalizes_target_files(
     )
     .expect("dynamic import fix hint");
 
-    assert_eq!(fix.kind, "dynamic-import");
+    assert_eq!(fix.kind, "lazy-load");
     assert_eq!(
         fix.target_files,
         vec![
@@ -51,7 +51,7 @@ fn subpath_import_fix_hint_preserves_replacement() {
     )
     .expect("subpath import fix hint");
 
-    assert_eq!(fix.kind, "subpath-import");
+    assert_eq!(fix.kind, "narrow-import");
     assert_eq!(
         fix.target_files,
         vec![
@@ -81,6 +81,32 @@ fn route_split_fix_hint_rejects_non_high_confidence_findings_and_empty_targets()
 }
 
 #[test]
+fn route_split_fix_hint_discards_blank_targets_before_validation() {
+    let blank_only_fix = route_split_fix_hint(
+        &high_confidence_finding("route-split-blank-only"),
+        "Split the route bundle.",
+        vec![String::new(), "   ".to_string()],
+    );
+
+    let mixed_fix = route_split_fix_hint(
+        &high_confidence_finding("route-split-mixed"),
+        "Split the route bundle.",
+        vec![
+            "  tests/fixtures/fix-hints/dynamic-import/src/Dashboard.tsx  ".to_string(),
+            String::new(),
+            "tests/fixtures/fix-hints/dynamic-import/src/Dashboard.tsx".to_string(),
+        ],
+    )
+    .expect("route split fix hint");
+
+    assert!(blank_only_fix.is_none());
+    assert_eq!(
+        mixed_fix.target_files,
+        vec!["tests/fixtures/fix-hints/dynamic-import/src/Dashboard.tsx".to_string()]
+    );
+}
+
+#[test]
 fn dedupe_resolution_fix_hint_allows_empty_target_files() {
     let fix = dedupe_resolution_fix_hint(
         &high_confidence_finding("dedupe-resolution"),
@@ -88,7 +114,7 @@ fn dedupe_resolution_fix_hint_allows_empty_target_files() {
     )
     .expect("dedupe resolution fix hint");
 
-    assert_eq!(fix.kind, "dedupe-resolution");
+    assert_eq!(fix.kind, "dedupe-package");
     assert!(fix.target_files.is_empty());
     assert_eq!(fix.replacement, None);
 }
