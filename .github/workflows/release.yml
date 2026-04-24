@@ -322,7 +322,7 @@ jobs:
           TAG_NAME: ${{ needs.validate-release-context.outputs.release_tag }}
           IS_PRERELEASE: ${{ needs.validate-release-context.outputs.is_prerelease }}
         run: |
-          RELEASE_ID="$(gh release view "$TAG_NAME" --json id --jq .id)"
+          RELEASE_ID="$(gh release view "$TAG_NAME" --json databaseId --jq .databaseId)"
 
           if [ "$IS_PRERELEASE" = "true" ]; then
             gh api \

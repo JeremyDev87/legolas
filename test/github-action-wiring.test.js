@@ -62,3 +62,11 @@ test("release workflow rejects tags whose commit is outside master", async () =>
   assert.match(workflow, /compare\/\$\{RELEASE_COMMIT_SHA\}\.\.\.master/);
   assert.match(workflow, /assertReleaseCommitReachableFromMaster/);
 });
+
+test("release workflow publishes releases with the REST database id", async () => {
+  const workflow = await readFile(".github/workflows/release.yml", "utf8");
+
+  assert.match(workflow, /gh release view "\$TAG_NAME" --json databaseId --jq \.databaseId/);
+  assert.doesNotMatch(workflow, /gh release view "\$TAG_NAME" --json id --jq \.id/);
+  assert.match(workflow, /repos\/\$\{GITHUB_REPOSITORY\}\/releases\/\$\{RELEASE_ID\}/);
+});
