@@ -26,9 +26,9 @@ Legolas はこうしたシグナルをスキャンし、人がすぐに判断で
 ## コマンド
 
 ```bash
-npx legolas scan
-npx legolas visualize
-npx legolas optimize
+npx @jeremyfellaz/legolas scan
+npx @jeremyfellaz/legolas visualize
+npx @jeremyfellaz/legolas optimize
 ```
 
 特定のプロジェクトパスを直接指定して解析することもできます。

@@ -26,9 +26,9 @@ Legolas analiza esas señales y las convierte en un informe de optimización fá
 ## Comandos
 
 ```bash
-npx legolas scan
-npx legolas visualize
-npx legolas optimize
+npx @jeremyfellaz/legolas scan
+npx @jeremyfellaz/legolas visualize
+npx @jeremyfellaz/legolas optimize
 ```
 
 También puedes analizar una ruta de proyecto específica:

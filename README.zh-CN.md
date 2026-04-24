@@ -26,9 +26,9 @@ Legolas 会扫描这些信号，并把它们整理成便于人工阅读和决策
 ## 命令
 
 ```bash
-npx legolas scan
-npx legolas visualize
-npx legolas optimize
+npx @jeremyfellaz/legolas scan
+npx @jeremyfellaz/legolas visualize
+npx @jeremyfellaz/legolas optimize
 ```
 
 也可以直接指定某个项目路径进行分析：
