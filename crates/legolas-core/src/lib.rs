@@ -21,7 +21,7 @@ pub mod workspace;
 pub mod workspaces;
 
 pub use action_plan::*;
-pub use analyze::analyze_project;
+pub use analyze::{analyze_project, analyze_project_with_options, AnalyzeOptions};
 pub use baseline::*;
 pub use boundaries::*;
 pub use confidence::*;

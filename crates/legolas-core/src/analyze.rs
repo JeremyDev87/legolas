@@ -22,7 +22,8 @@ use crate::{
     findings::{FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata},
     impact::estimate_impact,
     import_scanner::{
-        collect_source_files, scan_imports_with_aliases, ImportedPackageRecord, SourceAnalysis,
+        collect_source_files_with_ignore_patterns, scan_imports_with_aliases,
+        ImportedPackageRecord, SourceAnalysis,
     },
     lockfiles::parse_duplicate_packages,
     models::{
@@ -42,7 +43,19 @@ static CANDIDATE_FILES_PATTERN: Lazy<Regex> = Lazy::new(|| {
         .expect("valid candidate files regex")
 });
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AnalyzeOptions {
+    pub scan_ignore_patterns: Vec<String>,
+}
+
 pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
+    analyze_project_with_options(input_path, &AnalyzeOptions::default())
+}
+
+pub fn analyze_project_with_options<P: AsRef<Path>>(
+    input_path: P,
+    options: &AnalyzeOptions,
+) -> Result<Analysis> {
     let project_root = find_project_root(input_path)?;
     let manifest: Value = read_json_if_exists(project_root.join("package.json"))?
         .ok_or_else(|| LegolasError::PackageJsonMissing(project_root.display().to_string()))?;
@@ -50,7 +63,8 @@ pub fn analyze_project<P: AsRef<Path>>(input_path: P) -> Result<Analysis> {
     let package_manager = detect_package_manager(&project_root, &manifest)?;
     let frameworks = detect_frameworks(&project_root, &manifest)?;
     let alias_config = load_alias_config(&project_root)?;
-    let source_files = collect_source_files(&project_root)?;
+    let source_files =
+        collect_source_files_with_ignore_patterns(&project_root, &options.scan_ignore_patterns)?;
     let source_analysis = scan_imports_with_aliases(
         &project_root,
         &source_files,

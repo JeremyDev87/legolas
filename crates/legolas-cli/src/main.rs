@@ -15,12 +15,12 @@ use legolas_cli::{
     },
 };
 use legolas_core::{
-    analyze_project,
+    analyze_project_with_options,
     baseline::{boundary_warning_key, diff_analysis, BaselineSnapshot},
     budget::{evaluate_budget, BudgetEvaluation},
     config::{load_config_file, load_discovered_config, LoadedConfig},
     impact::estimate_impact,
-    LegolasError, Result,
+    AnalyzeOptions, LegolasError, Result,
 };
 use serde_json::{json, Map, Value};
 
@@ -88,7 +88,8 @@ fn run() -> Result<i32> {
         parsed.json || parsed.sarif,
     );
     let target_path = resolve_target_path(&parsed, loaded_config.as_ref())?;
-    let analysis = analyze_project(&target_path)?;
+    let analysis_options = resolve_analyze_options(loaded_config.as_ref());
+    let analysis = analyze_project_with_options(&target_path, &analysis_options)?;
     let baseline = resolve_baseline_snapshot(&parsed)?;
     let (output_analysis, regression_diff) = if parsed.regression_only {
         let Some(baseline) = baseline.as_ref() else {
@@ -388,6 +389,14 @@ fn resolve_target_path(parsed: &argv::CliArgs, config: Option<&LoadedConfig>) ->
     }
 
     std::env::current_dir().map_err(Into::into)
+}
+
+fn resolve_analyze_options(config: Option<&LoadedConfig>) -> AnalyzeOptions {
+    AnalyzeOptions {
+        scan_ignore_patterns: config
+            .map(|item| item.config.command_defaults.scan_ignore_patterns.clone())
+            .unwrap_or_default(),
+    }
 }
 
 fn resolve_visualize_limit(parsed: &argv::CliArgs, config: Option<&LoadedConfig>) -> usize {

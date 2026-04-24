@@ -12,6 +12,7 @@ homepage = "https://github.com/JeremyDev87/legolas#readme"
 assert_cmd = "2"
 clap = { version = "4", features = ["derive"] }
 once_cell = "1"
+ignore = "0.4"
 predicates = "3"
 regex = "1"
 serde = { version = "1", features = ["derive"] }

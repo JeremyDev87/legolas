@@ -24,6 +24,7 @@ pub struct LegolasConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CommandDefaults {
     pub scan_path: Option<String>,
+    pub scan_ignore_patterns: Vec<String>,
     pub visualize_limit: Option<usize>,
     pub optimize_top: Option<usize>,
 }
@@ -153,7 +154,9 @@ fn parse_root(
     let mut command_defaults = CommandDefaults::default();
 
     if let Some(scan) = root.get("scan") {
-        command_defaults.scan_path = parse_scan(scan, config_path, warnings)?;
+        let scan_defaults = parse_scan(scan, config_path, warnings)?;
+        command_defaults.scan_path = scan_defaults.path;
+        command_defaults.scan_ignore_patterns = scan_defaults.ignore_patterns;
     }
 
     if let Some(visualize) = root.get("visualize") {
@@ -175,20 +178,33 @@ fn parse_root(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct ScanDefaults {
+    path: Option<String>,
+    ignore_patterns: Vec<String>,
+}
+
 fn parse_scan(
     value: &Value,
     config_path: &Path,
     warnings: &mut Vec<ConfigWarning>,
-) -> Result<Option<String>> {
+) -> Result<ScanDefaults> {
     let scan = expect_object(value, config_path, "scan")?;
-    warn_unknown_keys(scan, &["path"], "scan", warnings);
+    warn_unknown_keys(scan, &["path", "ignorePatterns"], "scan", warnings);
 
-    match scan.get("path") {
-        Some(path) => Ok(Some(
-            expect_string(path, config_path, "scan.path")?.to_string(),
-        )),
-        None => Ok(None),
-    }
+    let path = match scan.get("path") {
+        Some(path) => Some(expect_string(path, config_path, "scan.path")?.to_string()),
+        None => None,
+    };
+    let ignore_patterns = match scan.get("ignorePatterns") {
+        Some(patterns) => parse_string_array(patterns, config_path, "scan.ignorePatterns")?,
+        None => Vec::new(),
+    };
+
+    Ok(ScanDefaults {
+        path,
+        ignore_patterns,
+    })
 }
 
 fn parse_visualize(
@@ -325,6 +341,19 @@ fn expect_string<'a>(value: &'a Value, config_path: &Path, key_path: &str) -> Re
     value
         .as_str()
         .ok_or_else(|| unsupported_shape(config_path, key_path, "string"))
+}
+
+fn parse_string_array(value: &Value, config_path: &Path, key_path: &str) -> Result<Vec<String>> {
+    let values = value
+        .as_array()
+        .ok_or_else(|| unsupported_shape(config_path, key_path, "array"))?;
+    let mut parsed = Vec::new();
+
+    for (index, item) in values.iter().enumerate() {
+        parsed.push(expect_string(item, config_path, &format!("{key_path}[{index}]"))?.to_string());
+    }
+
+    Ok(parsed)
 }
 
 fn expect_positive_usize(value: &Value, config_path: &Path, key_path: &str) -> Result<usize> {

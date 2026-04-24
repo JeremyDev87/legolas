@@ -33,6 +33,7 @@ fn load_discovered_config_reads_known_keys_from_project_root() {
             config: LegolasConfig {
                 command_defaults: CommandDefaults {
                     scan_path: Some("src".to_string()),
+                    scan_ignore_patterns: Vec::new(),
                     visualize_limit: Some(12),
                     optimize_top: Some(7),
                 },
@@ -85,6 +86,7 @@ fn load_config_file_collects_unknown_key_warnings_and_ignores_them() {
         &config_path,
         r#"{
   "visualize": { "limit": 9, "theme": "wide" },
+  "scan": { "ignorePattern": ["generated/**"] },
   "budget": {
     "rules": {
       "potentialKbSaved": { "warnAt": 40, "failAt": 80, "note": true },
@@ -110,6 +112,7 @@ fn load_config_file_collects_unknown_key_warnings_and_ignores_them() {
         LegolasConfig {
             command_defaults: CommandDefaults {
                 scan_path: None,
+                scan_ignore_patterns: Vec::new(),
                 visualize_limit: Some(9),
                 optimize_top: None,
             },
@@ -142,12 +145,141 @@ fn load_config_file_collects_unknown_key_warnings_and_ignores_them() {
             }
             .to_string(),
             ConfigWarning {
+                key_path: "scan.ignorePattern".to_string(),
+                message: "unknown config key ignored".to_string(),
+            }
+            .to_string(),
+            ConfigWarning {
                 key_path: "visualize.theme".to_string(),
                 message: "unknown config key ignored".to_string(),
             }
             .to_string(),
         ]
     );
+}
+
+#[test]
+fn load_config_file_reads_scan_ignore_patterns() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let config_path = temp_dir.path().join("legolas.config.json");
+    fs::write(
+        &config_path,
+        r#"{
+  "scan": {
+    "path": "src",
+    "ignorePatterns": ["generated/**", "!generated/keep.ts"]
+  }
+}
+"#,
+    )
+    .expect("write config");
+
+    let loaded = load_config_file(&config_path).expect("load config");
+
+    assert_eq!(
+        loaded.config.command_defaults,
+        CommandDefaults {
+            scan_path: Some("src".to_string()),
+            scan_ignore_patterns: vec![
+                "generated/**".to_string(),
+                "!generated/keep.ts".to_string()
+            ],
+            visualize_limit: None,
+            optimize_top: None,
+        }
+    );
+    assert_eq!(loaded.warnings, Vec::<ConfigWarning>::new());
+}
+
+#[test]
+fn load_config_file_accepts_empty_scan_ignore_patterns() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let config_path = temp_dir.path().join("legolas.config.json");
+    fs::write(
+        &config_path,
+        r#"{
+  "scan": {
+    "ignorePatterns": []
+  }
+}
+"#,
+    )
+    .expect("write config");
+
+    let loaded = load_config_file(&config_path).expect("load config");
+
+    assert_eq!(
+        loaded.config.command_defaults,
+        CommandDefaults {
+            scan_path: None,
+            scan_ignore_patterns: Vec::new(),
+            visualize_limit: None,
+            optimize_top: None,
+        }
+    );
+}
+
+#[test]
+fn load_config_file_rejects_non_array_scan_ignore_patterns() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let config_path = temp_dir.path().join("legolas.config.json");
+    fs::write(
+        &config_path,
+        r#"{
+  "scan": {
+    "ignorePatterns": "generated/**"
+  }
+}
+"#,
+    )
+    .expect("write config");
+
+    let error = load_config_file(&config_path).expect_err("invalid ignorePatterns should fail");
+
+    match error {
+        LegolasError::UnsupportedConfigShape {
+            path,
+            key_path,
+            message,
+        } => {
+            assert_eq!(path, config_path.display().to_string());
+            assert_eq!(key_path, "scan.ignorePatterns");
+            assert_eq!(message, "expected array");
+        }
+        other => panic!("expected unsupported config shape error, got {other:?}"),
+    }
+}
+
+#[test]
+fn load_config_file_rejects_non_string_scan_ignore_pattern_items() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let config_path = temp_dir.path().join("legolas.config.json");
+    fs::write(
+        &config_path,
+        r#"{
+  "scan": {
+    "ignorePatterns": ["generated/**", 42]
+  }
+}
+"#,
+    )
+    .expect("write config");
+
+    let error =
+        load_config_file(&config_path).expect_err("invalid ignorePatterns item should fail");
+
+    match error {
+        LegolasError::UnsupportedConfigShape {
+            path,
+            key_path,
+            message,
+        } => {
+            assert_eq!(path, config_path.display().to_string());
+            assert_eq!(key_path, "scan.ignorePatterns[1]");
+            assert_eq!(message, "expected string");
+        }
+        other => panic!("expected unsupported config shape error, got {other:?}"),
+    }
 }
 
 #[test]

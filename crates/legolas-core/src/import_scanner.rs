@@ -1,7 +1,13 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
+};
+
+use ignore::{
+    gitignore::{Gitignore, GitignoreBuilder},
+    WalkBuilder,
 };
 
 use crate::{
@@ -146,11 +152,22 @@ struct LocaleImportAccumulator {
 }
 
 pub fn collect_source_files<P: AsRef<Path>>(project_root: P) -> Result<Vec<PathBuf>> {
+    collect_source_files_with_ignore_patterns(project_root, &[] as &[String])
+}
+
+pub fn collect_source_files_with_ignore_patterns<P, S>(
+    project_root: P,
+    ignore_patterns: &[S],
+) -> Result<Vec<PathBuf>>
+where
+    P: AsRef<Path>,
+    S: AsRef<str>,
+{
     let project_root = project_root.as_ref();
     ensure_directory_exists(project_root)?;
 
     let mut files = Vec::new();
-    walk(project_root, &mut files)?;
+    walk(project_root, ignore_patterns, &mut files)?;
     files.sort();
     Ok(files)
 }
@@ -250,34 +267,117 @@ fn ensure_directory_exists(path: &Path) -> Result<()> {
     }
 }
 
-fn walk(current_path: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
-    let mut entries = fs::read_dir(current_path)?.collect::<std::io::Result<Vec<_>>>()?;
-    entries.sort_by_key(|entry| entry.file_name());
+fn is_source_file(file_name: &str) -> bool {
+    SOURCE_FILE_SUFFIXES
+        .iter()
+        .any(|suffix| file_name.ends_with(suffix))
+}
 
-    for entry in entries {
-        let absolute_path = entry.path();
+fn walk<P: AsRef<str>>(
+    project_root: &Path,
+    ignore_patterns: &[P],
+    files: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let config_ignores = build_config_ignore_matcher(project_root, ignore_patterns)?;
+    let mut builder = WalkBuilder::new(project_root);
+    builder
+        .hidden(false)
+        .ignore(false)
+        .parents(false)
+        .git_ignore(true)
+        .git_exclude(false)
+        .git_global(false)
+        .require_git(false)
+        .current_dir(project_root);
 
-        if entry.file_type()?.is_dir() {
-            let name = entry.file_name();
-            if IGNORED_DIRECTORIES.iter().any(|ignored| name == *ignored) {
-                continue;
+    let legolas_ignore_path = project_root.join(".legolasignore");
+    match fs::metadata(&legolas_ignore_path) {
+        Ok(_) => {
+            if let Some(error) = builder.add_ignore(legolas_ignore_path) {
+                return Err(error.into());
             }
-            walk(&absolute_path, files)?;
-            continue;
         }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
 
-        if is_source_file(&entry.file_name().to_string_lossy()) {
-            files.push(absolute_path);
+    let project_root_for_filter = project_root.to_path_buf();
+    builder.filter_entry(move |entry| {
+        !should_skip_entry(
+            &project_root_for_filter,
+            entry.path(),
+            &config_ignores,
+            entry,
+        )
+    });
+
+    for entry in builder.build() {
+        let entry = entry?;
+        if entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_file())
+            && is_source_file(&entry.file_name().to_string_lossy())
+        {
+            files.push(entry.path().to_path_buf());
         }
     }
 
     Ok(())
 }
 
-fn is_source_file(file_name: &str) -> bool {
-    SOURCE_FILE_SUFFIXES
-        .iter()
-        .any(|suffix| file_name.ends_with(suffix))
+fn build_config_ignore_matcher<P: AsRef<str>>(
+    project_root: &Path,
+    ignore_patterns: &[P],
+) -> Result<Option<Gitignore>> {
+    if ignore_patterns.is_empty() {
+        return Ok(None);
+    }
+
+    let mut builder = GitignoreBuilder::new(project_root);
+    for pattern in ignore_patterns {
+        builder.add_line(None, pattern.as_ref())?;
+    }
+
+    Ok(Some(builder.build()?))
+}
+
+fn should_skip_entry(
+    project_root: &Path,
+    absolute_path: &Path,
+    config_ignores: &Option<Gitignore>,
+    entry: &ignore::DirEntry,
+) -> bool {
+    if absolute_path == project_root {
+        return false;
+    }
+
+    if has_builtin_ignored_directory(project_root, absolute_path) {
+        return true;
+    }
+
+    config_ignores.as_ref().is_some_and(|matcher| {
+        matcher
+            .matched(
+                absolute_path,
+                entry
+                    .file_type()
+                    .is_some_and(|file_type| file_type.is_dir()),
+            )
+            .is_ignore()
+    })
+}
+
+fn has_builtin_ignored_directory(project_root: &Path, absolute_path: &Path) -> bool {
+    let relative_path = absolute_path
+        .strip_prefix(project_root)
+        .unwrap_or(absolute_path);
+
+    relative_path.components().any(|component| match component {
+        Component::Normal(name) => IGNORED_DIRECTORIES
+            .iter()
+            .any(|ignored| name == OsStr::new(ignored)),
+        _ => false,
+    })
 }
 
 fn scan_source_file(contents: &str, jsx_text_guard: bool) -> ScannedSourceFile {
