@@ -2,19 +2,20 @@ Legolas
 Slim bundles with precision.
 
 Usage:
-  legolas scan [path] [--config file] [--json] [--write-baseline file] [--baseline file --regression-only]
+  legolas scan [path] [--config file] [--json | --sarif] [--write-baseline file] [--baseline file --regression-only]
   legolas visualize [path] [--config file] [--limit 10]
   legolas optimize [path] [--config file] [--top 5] [--baseline file --regression-only]
   legolas budget [path] [--config file] [--json] [--baseline file --regression-only]
-  legolas ci [path] [--config file] [--json] [--baseline file --regression-only]
+  legolas ci [path] [--config file] [--json | --sarif] [--baseline file --regression-only]
   legolas help
 
 Examples:
   legolas scan .
+  legolas scan ./apps/storefront --sarif
   legolas scan ./apps/storefront --write-baseline ./baseline.json --json
   legolas scan ./apps/storefront --baseline ./baseline.json --regression-only --json
   legolas scan --config ./legolas.config.json
   legolas visualize ./apps/storefront --limit 12
   legolas optimize ./apps/storefront --top 7 --baseline ./baseline.json --regression-only
   legolas budget ./apps/storefront --baseline ./baseline.json --regression-only --json
-  legolas ci ./apps/storefront --baseline ./baseline.json --regression-only
+  legolas ci ./apps/storefront --baseline ./baseline.json --regression-only --sarif

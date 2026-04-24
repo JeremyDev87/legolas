@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 const ANALYSIS_SCHEMA_VERSION: &str = "legolas.analysis.v1";
 const BUDGET_SCHEMA_VERSION: &str = "legolas.budget.v1";
 const CI_SCHEMA_VERSION: &str = "legolas.ci.v1";
+const SARIF_SCHEMA_URL: &str = "https://json.schemastore.org/sarif-2.1.0.json";
+const SARIF_VERSION: &str = "2.1.0";
 
 #[test]
 fn scan_json_matches_analysis_schema_doc() {
@@ -102,6 +104,71 @@ fn regression_only_ci_json_matches_ci_schema_doc() {
     let schema = read_schema("ci.v1.schema.json");
 
     assert_eq!(value["schemaVersion"], json!(CI_SCHEMA_VERSION));
+    assert_matches_schema(&value, &schema, "$");
+}
+
+#[test]
+fn scan_sarif_matches_schema_doc() {
+    let fixture = support::fixture_path("tests/fixtures/parity/basic-app");
+    let output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["scan", &fixture.display().to_string(), "--sarif"])
+        .output()
+        .expect("run scan --sarif");
+
+    assert!(output.status.success());
+    let output = String::from_utf8(output.stdout).expect("stdout");
+    let value = serde_json::from_str::<Value>(&output).expect("parse scan sarif");
+    let schema = read_schema("sarif.v1.json");
+
+    assert_eq!(value["$schema"], json!(SARIF_SCHEMA_URL));
+    assert_eq!(value["version"], json!(SARIF_VERSION));
+    assert_matches_schema(&value, &schema, "$");
+}
+
+#[test]
+fn ci_sarif_matches_schema_doc() {
+    let fixture = support::fixture_path("tests/fixtures/parity/basic-app");
+    let output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["ci", &fixture.display().to_string(), "--sarif"])
+        .output()
+        .expect("run ci --sarif");
+
+    assert!(!output.status.success());
+    let output = String::from_utf8(output.stdout).expect("stdout");
+    let value = serde_json::from_str::<Value>(&output).expect("parse ci sarif");
+    let schema = read_schema("sarif.v1.json");
+
+    assert_eq!(value["$schema"], json!(SARIF_SCHEMA_URL));
+    assert_eq!(value["version"], json!(SARIF_VERSION));
+    assert_matches_schema(&value, &schema, "$");
+}
+
+#[test]
+fn regression_only_ci_sarif_matches_schema_doc() {
+    let fixture = support::fixture_path("tests/fixtures/baseline/current-app");
+    let baseline = support::fixture_path("tests/fixtures/baseline/previous-scan.json");
+    let output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args([
+            "ci",
+            &fixture.display().to_string(),
+            "--baseline",
+            &baseline.display().to_string(),
+            "--regression-only",
+            "--sarif",
+        ])
+        .output()
+        .expect("run regression ci --sarif");
+
+    assert!(output.status.success());
+    let output = String::from_utf8(output.stdout).expect("stdout");
+    let value = serde_json::from_str::<Value>(&output).expect("parse regression ci sarif");
+    let schema = read_schema("sarif.v1.json");
+
+    assert_eq!(value["$schema"], json!(SARIF_SCHEMA_URL));
+    assert_eq!(value["version"], json!(SARIF_VERSION));
     assert_matches_schema(&value, &schema, "$");
 }
 
