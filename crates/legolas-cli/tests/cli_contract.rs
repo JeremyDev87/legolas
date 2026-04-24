@@ -454,6 +454,23 @@ fn matches_missing_number_and_unknown_flag_contracts() {
             ],
             "legolas: unknown flag \"--regression-only\"\n",
         ),
+        (
+            vec![
+                "visualize".to_string(),
+                fixture.display().to_string(),
+                "--sarif".to_string(),
+            ],
+            "legolas: unknown flag \"--sarif\"\n",
+        ),
+        (
+            vec![
+                "scan".to_string(),
+                fixture.display().to_string(),
+                "--json".to_string(),
+                "--sarif".to_string(),
+            ],
+            "legolas: --json and --sarif cannot be used together\n",
+        ),
     ];
 
     for (args, expected_stderr) in cases {

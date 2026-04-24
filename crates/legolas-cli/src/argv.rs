@@ -22,6 +22,7 @@ pub struct CliArgs {
     pub write_baseline_path: Option<PathBuf>,
     pub regression_only: bool,
     pub json: bool,
+    pub sarif: bool,
     pub limit: Option<usize>,
     pub top: Option<usize>,
     pub help: bool,
@@ -70,6 +71,9 @@ where
             }
             "--json" => {
                 parsed.json = true;
+            }
+            "--sarif" => {
+                parsed.sarif = true;
             }
             "--config" => {
                 parsed.config_path = Some(parse_path_flag(&tokens, index, "--config")?);
@@ -123,8 +127,8 @@ where
         return Ok(parsed);
     }
 
+    validate_output_flags(&parsed)?;
     validate_baseline_flags(&parsed)?;
-
     parsed.limit = finalize_numeric_flag(parsed.command.as_ref(), pending_limit, "--limit")?;
     parsed.top = finalize_numeric_flag(parsed.command.as_ref(), pending_top, "--top")?;
 
@@ -198,6 +202,27 @@ fn validate_baseline_flags(parsed: &CliArgs) -> Result<()> {
     if parsed.baseline_path.is_some() && !parsed.regression_only {
         return Err(LegolasError::CliUsage(
             "--baseline requires --regression-only".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_output_flags(parsed: &CliArgs) -> Result<()> {
+    if !parsed.sarif {
+        return Ok(());
+    }
+
+    let command_supports = matches!(parsed.command, Some(Command::Scan) | Some(Command::Ci));
+    if !command_supports {
+        return Err(LegolasError::CliUsage(
+            "unknown flag \"--sarif\"".to_string(),
+        ));
+    }
+
+    if parsed.json {
+        return Err(LegolasError::CliUsage(
+            "--json and --sarif cannot be used together".to_string(),
         ));
     }
 

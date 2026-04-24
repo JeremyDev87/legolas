@@ -214,3 +214,38 @@ fn json_mode_suppresses_config_warnings_to_keep_machine_output_clean() {
     );
     assert_eq!(stderr(&output), "");
 }
+
+#[test]
+fn sarif_mode_suppresses_config_warnings_to_keep_machine_output_clean() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let config_path = temp_dir.path().join("legolas.config.json");
+    let basic_app = support::fixture_path("tests/fixtures/parity/basic-app");
+    fs::write(
+        &config_path,
+        format!(
+            r#"{{
+  "scan": {{ "path": "{}" }},
+  "visualize": {{ "limit": 2, "theme": "wide" }},
+  "extra": true
+}}
+"#,
+            normalize(&basic_app.display().to_string())
+        ),
+    )
+    .expect("write config");
+
+    let output = run_cli(&[
+        "scan",
+        "--config",
+        &config_path.display().to_string(),
+        "--sarif",
+    ]);
+    let expected = run_cli(&["scan", &basic_app.display().to_string(), "--sarif"]);
+
+    assert!(output.status.success());
+    assert_eq!(
+        support::normalize_sarif_output(&stdout(&output)),
+        support::normalize_sarif_output(&stdout(&expected))
+    );
+    assert_eq!(stderr(&output), "");
+}

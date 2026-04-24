@@ -6,9 +6,12 @@ use std::{
 
 use legolas_cli::{
     argv::{self, Command},
-    reporters::text::{
-        format_budget_report, format_ci_report, format_optimize_report, format_scan_report,
-        format_visualization_report,
+    reporters::{
+        sarif::{ci_sarif_output, scan_sarif_output},
+        text::{
+            format_budget_report, format_ci_report, format_optimize_report, format_scan_report,
+            format_visualization_report,
+        },
     },
 };
 use legolas_core::{
@@ -29,22 +32,23 @@ const HELP_TEXT: &str = r#"Legolas
 Slim bundles with precision.
 
 Usage:
-  legolas scan [path] [--config file] [--json] [--write-baseline file] [--baseline file --regression-only]
+  legolas scan [path] [--config file] [--json | --sarif] [--write-baseline file] [--baseline file --regression-only]
   legolas visualize [path] [--config file] [--limit 10]
   legolas optimize [path] [--config file] [--top 5] [--baseline file --regression-only]
   legolas budget [path] [--config file] [--json] [--baseline file --regression-only]
-  legolas ci [path] [--config file] [--json] [--baseline file --regression-only]
+  legolas ci [path] [--config file] [--json | --sarif] [--baseline file --regression-only]
   legolas help
 
 Examples:
   legolas scan .
+  legolas scan ./apps/storefront --sarif
   legolas scan ./apps/storefront --write-baseline ./baseline.json --json
   legolas scan ./apps/storefront --baseline ./baseline.json --regression-only --json
   legolas scan --config ./legolas.config.json
   legolas visualize ./apps/storefront --limit 12
   legolas optimize ./apps/storefront --top 7 --baseline ./baseline.json --regression-only
   legolas budget ./apps/storefront --baseline ./baseline.json --regression-only --json
-  legolas ci ./apps/storefront --baseline ./baseline.json --regression-only
+  legolas ci ./apps/storefront --baseline ./baseline.json --regression-only --sarif
 "#;
 
 fn main() {
@@ -78,7 +82,11 @@ fn run() -> Result<i32> {
     }
 
     let loaded_config = resolve_loaded_config(&parsed)?;
-    emit_config_warnings(&command, loaded_config.as_ref(), parsed.json);
+    emit_config_warnings(
+        &command,
+        loaded_config.as_ref(),
+        parsed.json || parsed.sarif,
+    );
     let target_path = resolve_target_path(&parsed, loaded_config.as_ref())?;
     let analysis = analyze_project(&target_path)?;
     let baseline = resolve_baseline_snapshot(&parsed)?;
@@ -105,6 +113,43 @@ fn run() -> Result<i32> {
 
     if let Some(write_baseline_path) = &parsed.write_baseline_path {
         write_baseline_snapshot(write_baseline_path, &analysis)?;
+    }
+
+    if parsed.sarif {
+        let output = match command {
+            Command::Scan => scan_sarif_output(&output_analysis),
+            Command::Ci => ci_sarif_output(
+                &output_analysis,
+                budget_evaluation
+                    .as_ref()
+                    .expect("budget evaluation exists for ci command"),
+                regression_diff.as_ref(),
+            ),
+            Command::Visualize | Command::Optimize | Command::Budget => {
+                unreachable!("argv validation already restricts --sarif")
+            }
+            Command::Help | Command::Unknown(_) => unreachable!("handled above"),
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
+
+        if matches!(command, Command::Ci)
+            && budget_evaluation
+                .as_ref()
+                .expect("budget evaluation exists for ci command")
+                .has_failures()
+        {
+            eprintln!(
+                "{}",
+                ci_failure_message(
+                    budget_evaluation
+                        .as_ref()
+                        .expect("budget evaluation exists for ci command"),
+                )
+            );
+            return Ok(1);
+        }
+
+        return Ok(0);
     }
 
     if parsed.json {

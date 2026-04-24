@@ -51,6 +51,13 @@ pub fn normalize_ci_json_output(output: &str) -> Value {
 }
 
 #[allow(dead_code)]
+pub fn normalize_sarif_output(output: &str) -> Value {
+    let mut sarif = serde_json::from_str::<Value>(output).expect("parse sarif json");
+    normalize_sarif_value(&mut sarif);
+    sarif
+}
+
+#[allow(dead_code)]
 fn normalize_analysis_value(analysis: &mut Value) {
     replace_string_field(analysis, &["projectRoot"], "<PROJECT_ROOT>");
     replace_string_field(analysis, &["metadata", "generatedAt"], "<GENERATED_AT>");
@@ -85,6 +92,50 @@ fn normalize_analysis_value(analysis: &mut Value) {
         "recommendedFix",
         "targetFiles",
     );
+}
+
+#[allow(dead_code)]
+fn normalize_sarif_value(sarif: &mut Value) {
+    let Some(Value::Array(runs)) = get_path_mut(sarif, &["runs"]) else {
+        return;
+    };
+
+    for run in runs {
+        let Some(results) = run.get_mut("results").and_then(Value::as_array_mut) else {
+            continue;
+        };
+
+        for result in results {
+            if let Some(locations) = result.get_mut("locations").and_then(Value::as_array_mut) {
+                for location in locations {
+                    let Some(uri_value) = location
+                        .get_mut("physicalLocation")
+                        .and_then(|value| value.get_mut("artifactLocation"))
+                        .and_then(|value| value.get_mut("uri"))
+                    else {
+                        continue;
+                    };
+                    let Some(uri) = uri_value.as_str().map(str::to_string) else {
+                        continue;
+                    };
+
+                    location["physicalLocation"]["artifactLocation"]["uri"] =
+                        Value::String(to_posix(uri));
+                }
+            }
+
+            let Some(properties) = result.get_mut("properties") else {
+                continue;
+            };
+            normalize_object_array_string_field(properties, &["evidence"], "file");
+            normalize_object_array_object_array_string_field(
+                properties,
+                &[],
+                "recommendedFix",
+                "targetFiles",
+            );
+        }
+    }
 }
 
 #[allow(dead_code)]

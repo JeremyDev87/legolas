@@ -1,0 +1,355 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JeremyDev87/legolas/blob/master/docs/schema/sarif.v1.json",
+  "title": "Legolas SARIF v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "version",
+    "runs"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://json.schemastore.org/sarif-2.1.0.json"
+    },
+    "version": {
+      "type": "string",
+      "const": "2.1.0"
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tool",
+          "properties",
+          "results"
+        ],
+        "properties": {
+          "tool": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "driver"
+            ],
+            "properties": {
+              "driver": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "informationUri",
+                  "rules"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "const": "legolas"
+                  },
+                  "informationUri": {
+                    "type": "string",
+                    "const": "https://github.com/JeremyDev87/legolas"
+                  },
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "shortDescription"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "shortDescription": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "text"
+                          ],
+                          "properties": {
+                            "text": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "command"
+            ],
+            "properties": {
+              "command": {
+                "type": "string",
+                "enum": [
+                  "scan",
+                  "ci"
+                ]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "passed": {
+                "type": "boolean"
+              },
+              "overallStatus": {
+                "type": "string",
+                "enum": [
+                  "Pass",
+                  "Warn",
+                  "Fail"
+                ]
+              },
+              "rules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "key",
+                    "actual",
+                    "warnAt",
+                    "failAt",
+                    "status",
+                    "triggeredFindings"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "actual": {
+                      "type": "integer"
+                    },
+                    "warnAt": {
+                      "type": "integer"
+                    },
+                    "failAt": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "Pass",
+                        "Warn",
+                        "Fail"
+                      ]
+                    },
+                    "triggeredFindings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "findingId",
+                          "analysisSource",
+                          "confidence"
+                        ],
+                        "properties": {
+                          "findingId": {
+                            "type": "string"
+                          },
+                          "analysisSource": {
+                            "type": "string"
+                          },
+                          "confidence": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "regression": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "mode",
+                  "baselineDiff"
+                ],
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "regression-only"
+                  },
+                  "baselineDiff": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "required": [
+                      "schemaVersion"
+                    ],
+                    "properties": {
+                      "schemaVersion": {
+                        "type": "integer",
+                        "const": 5
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ruleId",
+                "level",
+                "message",
+                "properties"
+              ],
+              "properties": {
+                "ruleId": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string",
+                  "enum": [
+                    "warning",
+                    "note"
+                  ]
+                },
+                "message": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "text"
+                  ],
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "locations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "physicalLocation"
+                    ],
+                    "properties": {
+                      "physicalLocation": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "artifactLocation"
+                        ],
+                        "properties": {
+                          "artifactLocation": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "uri"
+                            ],
+                            "properties": {
+                              "uri": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "properties": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "analysisSource",
+                    "confidence",
+                    "evidence"
+                  ],
+                  "properties": {
+                    "analysisSource": {
+                      "type": "string"
+                    },
+                    "confidence": {
+                      "type": "string"
+                    },
+                    "actionPriority": {
+                      "type": "integer"
+                    },
+                    "recommendation": {
+                      "type": "string"
+                    },
+                    "recommendedFix": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "title",
+                        "targetFiles"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "targetFiles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "replacement": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "evidence": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "file": {
+                            "type": "string"
+                          },
+                          "specifier": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
