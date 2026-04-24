@@ -12,6 +12,7 @@ const smokeRoot = await mkdtemp(path.join(os.tmpdir(), "legolas-packed-install-"
 const packDir = path.join(smokeRoot, "pack");
 const installDir = path.join(smokeRoot, "install");
 const cacheDir = path.join(smokeRoot, "npm-cache");
+const scanFixturePath = path.join(projectRoot, "tests", "fixtures", "parity", "basic-app");
 
 await mkdir(packDir, { recursive: true });
 await mkdir(installDir, { recursive: true });
@@ -61,7 +62,21 @@ if (actualVersion !== packageManifest.version) {
   );
 }
 
-console.log(`Verified packed install legolas --version ${actualVersion}.`);
+const scan = runInstalledBinary(binPath, ["scan", scanFixturePath], { cwd: installDir });
+
+if (!scan.stdout.includes("Legolas scan for basic-parity-app")) {
+  throw new Error(`installed legolas scan did not report the basic fixture:\n${scan.stdout}`);
+}
+
+if (!scan.stdout.includes("Scanned 1 source files")) {
+  throw new Error(`installed legolas scan did not report the expected source count:\n${scan.stdout}`);
+}
+
+if (scan.stderr !== "") {
+  throw new Error(`installed legolas scan wrote unexpected stderr:\n${scan.stderr}`);
+}
+
+console.log(`Verified packed install legolas --version ${actualVersion} and scan basic-parity-app.`);
 
 async function assertFile(filePath, message) {
   const fileStat = await stat(filePath).catch(() => null);
