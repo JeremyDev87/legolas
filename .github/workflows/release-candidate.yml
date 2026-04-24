@@ -1,0 +1,128 @@
+name: Release Candidate Core Verification
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - package.json
+      - crates/legolas-cli/Cargo.toml
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact commit SHA to verify as the release candidate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legolas-release-candidate-${{ github.event_name == 'push' && github.sha || inputs.target_sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'JeremyDev87/legolas'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Resolve verification target
+        id: target
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "sha=${{ inputs.target_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out candidate commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+
+      - name: Read release candidate metadata
+        id: meta
+        shell: bash
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          cargo_version="$(sed -n 's/^version = "\\(.*\\)"$/\\1/p' crates/legolas-cli/Cargo.toml | head -n 1)"
+          release_tag="v${package_version}"
+
+          if [ -z "$cargo_version" ]; then
+            echo "Unable to read crates/legolas-cli/Cargo.toml version"
+            exit 1
+          fi
+
+          if [ "$cargo_version" != "$package_version" ]; then
+            echo "Cargo version ${cargo_version} does not match package version ${package_version}"
+            exit 1
+          fi
+
+          {
+            echo "package_version=$package_version"
+            echo "release_tag=$release_tag"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Ensure release tag does not already exist
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --tags origin "${{ steps.meta.outputs.release_tag }}" >/dev/null 2>&1; then
+            echo "Release tag ${{ steps.meta.outputs.release_tag }} already exists on origin."
+            exit 1
+          fi
+
+      - name: Validate release wiring
+        run: node ./scripts/validate-release-wiring.mjs
+
+      - name: Run release contract tests
+        run: npm run test:release-contract
+
+      - name: Run Rust workspace tests
+        run: cargo test --workspace
+
+      - name: Build Rust release binary
+        run: cargo build --release -p legolas-cli
+
+      - name: Stage vendor layout
+        run: node ./scripts/stage-local-vendor-binary.mjs
+
+      - name: Verify vendor layout
+        run: node ./scripts/verify-vendor-layout.mjs
+
+      - name: Verify package tarball
+        run: npm run pack:check
+
+      - name: Smoke test packaged launcher
+        run: |
+          node ./bin/legolas.js --version
+          node ./bin/legolas.js help
+          node ./bin/legolas.js scan tests/fixtures/parity/basic-app
+          node ./scripts/smoke-ci-command.mjs launcher
+
+      - name: Summarize verification
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Release candidate verification"
+            echo
+            echo "- target sha: \`${{ steps.target.outputs.sha }}\`"
+            echo "- candidate tag: \`${{ steps.meta.outputs.release_tag }}\`"
+            echo "- package version: \`${{ steps.meta.outputs.package_version }}\`"
+            echo
+            echo "Confirm the matching \`legolas-ci\` run for the same commit before creating the tag."
+          } >> "$GITHUB_STEP_SUMMARY"

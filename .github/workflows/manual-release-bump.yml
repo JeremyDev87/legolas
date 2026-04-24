@@ -1,0 +1,348 @@
+name: Manual Release Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Target release tag or version, for example v0.1.1 or 0.1.1-beta.2
+        required: true
+        type: string
+      dry_run:
+        description: Validate and prepare the bump without pushing a branch or opening a PR
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: manual-release-bump-master-${{ startsWith(inputs.tag, 'v') && inputs.tag || format('v{0}', inputs.tag) }}
+  cancel-in-progress: false
+
+jobs:
+  bump_release_version:
+    if: github.repository == 'JeremyDev87/legolas'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "22"
+
+      - name: Set up Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+
+      - name: Resolve bump metadata
+        id: meta
+        shell: bash
+        run: |
+          tag="${{ inputs.tag }}"
+          if [[ "$tag" != v* ]]; then
+            tag="v$tag"
+          fi
+
+          current_version="$(node -p "require('./package.json').version")"
+          current_cargo_version="$(sed -n 's/^version = "\\(.*\\)"$/\\1/p' crates/legolas-cli/Cargo.toml | head -n 1)"
+          expected_version="${tag#v}"
+          branch="$(node --input-type=module -e "import { createManualBumpBranchName } from './scripts/bump-release-version.mjs'; console.log(createManualBumpBranchName(process.argv[1]));" "$tag")"
+
+          if [ -z "$current_cargo_version" ]; then
+            echo "Unable to read crates/legolas-cli/Cargo.toml version"
+            exit 1
+          fi
+
+          if [ "$current_cargo_version" != "$current_version" ]; then
+            echo "Cargo version $current_cargo_version does not match package version $current_version"
+            exit 1
+          fi
+
+          {
+            echo "currentVersion=$current_version"
+            echo "version=$expected_version"
+            echo "tag=$tag"
+            echo "branch=$branch"
+            echo "title=chore: ${expected_version} 수동 bump"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Apply version bump
+        run: node ./scripts/bump-release-version.mjs "${{ steps.meta.outputs.tag }}"
+
+      - name: Verify changed files before validation
+        shell: bash
+        run: |
+          # shellcheck disable=SC2016
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            import { versionFilePaths } from "./scripts/bump-release-version.mjs";
+
+            const changedFiles = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" })
+              .trim()
+              .split("\n")
+              .filter(Boolean)
+              .sort();
+            const expectedFiles = [...versionFilePaths].sort();
+
+            if (JSON.stringify(changedFiles) !== JSON.stringify(expectedFiles)) {
+              throw new Error(`Unexpected changed files: ${changedFiles.join(", ")}`);
+            }
+          '
+
+      - name: Run release contract tests
+        run: npm run test:release-contract
+
+      - name: Run Rust workspace tests
+        run: npm test
+
+      - name: Verify changed files after validation
+        shell: bash
+        run: |
+          # shellcheck disable=SC2016
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            import { versionFilePaths } from "./scripts/bump-release-version.mjs";
+
+            const changedFiles = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" })
+              .trim()
+              .split("\n")
+              .filter(Boolean)
+              .sort();
+            const expectedFiles = [...versionFilePaths].sort();
+
+            if (JSON.stringify(changedFiles) !== JSON.stringify(expectedFiles)) {
+              throw new Error(`Unexpected changed files after validation: ${changedFiles.join(", ")}`);
+            }
+          '
+
+      - name: Stop after dry run
+        if: ${{ inputs.dry_run }}
+        run: echo "Dry run requested; skipping branch push and PR creation."
+
+      - name: Configure git author
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Ensure skip-changelog label exists
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        run: |
+          if gh label list --search "skip-changelog" --json name --jq 'map(select(.name == "skip-changelog")) | length > 0' | grep -q true; then
+            exit 0
+          fi
+
+          gh label create "skip-changelog" \
+            --color "6E7781" \
+            --description "Exclude automated release prep PRs from release notes."
+
+      - name: Resolve existing open PR
+        if: ${{ !inputs.dry_run }}
+        id: existing_pr
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          pr_json=$(gh pr list \
+            --head "${{ steps.meta.outputs.branch }}" \
+            --state open \
+            --json number,url,baseRefName,labels)
+
+          pr_number=$(printf '%s' "$pr_json" | jq -r '.[0].number // empty')
+          pr_url=$(printf '%s' "$pr_json" | jq -r '.[0].url // empty')
+          pr_base=$(printf '%s' "$pr_json" | jq -r '.[0].baseRefName // empty')
+          has_skip_changelog=$(printf '%s' "$pr_json" | jq -r 'if (.[0].labels // []) | map(.name) | index("skip-changelog") then "true" else "false" end')
+
+          if [ -n "$pr_number" ] && [ "$pr_base" != "master" ]; then
+            echo "Existing PR $pr_url targets base '$pr_base', expected 'master'."
+            exit 1
+          fi
+
+          if [ -n "$pr_number" ]; then
+            git fetch origin \
+              "refs/heads/master:refs/remotes/origin/master" \
+              "refs/heads/${{ steps.meta.outputs.branch }}:refs/remotes/origin/${{ steps.meta.outputs.branch }}"
+
+            # shellcheck disable=SC2016
+            node --input-type=module -e '
+              import { execFileSync } from "node:child_process";
+              import { versionFilePaths } from "./scripts/bump-release-version.mjs";
+
+              const branch = process.argv[1];
+              const expectedVersion = process.argv[2];
+              const diffFiles = execFileSync(
+                "git",
+                ["diff", "--name-only", `refs/remotes/origin/master...refs/remotes/origin/${branch}`],
+                { encoding: "utf8" },
+              )
+                .trim()
+                .split("\n")
+                .filter(Boolean)
+                .sort();
+              const expectedFiles = [...versionFilePaths].sort();
+
+              if (JSON.stringify(diffFiles) !== JSON.stringify(expectedFiles)) {
+                throw new Error(`Existing PR is not a version-only bump: ${diffFiles.join(", ")}`);
+              }
+
+              const packageManifest = JSON.parse(
+                execFileSync("git", ["show", `refs/remotes/origin/${branch}:package.json`], {
+                  encoding: "utf8",
+                }),
+              );
+              const cargoManifest = execFileSync(
+                "git",
+                ["show", `refs/remotes/origin/${branch}:crates/legolas-cli/Cargo.toml`],
+                { encoding: "utf8" },
+              );
+              const cargoMatch = cargoManifest.match(/^version\s*=\s*"([^"]+)"$/m);
+
+              if (packageManifest.version !== expectedVersion) {
+                throw new Error(`package.json version mismatch: ${packageManifest.version}`);
+              }
+              if (!cargoMatch?.[1]) {
+                throw new Error("Unable to read crates/legolas-cli/Cargo.toml version from existing PR");
+              }
+              if (cargoMatch[1] !== expectedVersion) {
+                throw new Error(`crates/legolas-cli/Cargo.toml version mismatch: ${cargoMatch[1]}`);
+              }
+            ' "${{ steps.meta.outputs.branch }}" "$EXPECTED_VERSION"
+          fi
+
+          if [ -n "$pr_number" ] && [ "$has_skip_changelog" != "true" ]; then
+            gh pr edit "$pr_number" --add-label skip-changelog
+          fi
+
+          {
+            echo "number=$pr_number"
+            echo "url=$pr_url"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Prepare bump branch
+        if: ${{ !inputs.dry_run && steps.existing_pr.outputs.number == '' }}
+        shell: bash
+        run: |
+          lease_args=()
+
+          if git ls-remote --exit-code --heads origin "${{ steps.meta.outputs.branch }}" >/dev/null 2>&1; then
+            echo "Remote branch ${{ steps.meta.outputs.branch }} already exists; refreshing it with the verified bump commit."
+            git fetch origin "refs/heads/${{ steps.meta.outputs.branch }}:refs/remotes/origin/${{ steps.meta.outputs.branch }}"
+            lease_args+=(--force-with-lease="refs/heads/${{ steps.meta.outputs.branch }}:$(git rev-parse "refs/remotes/origin/${{ steps.meta.outputs.branch }}")")
+          fi
+
+          git switch -C "${{ steps.meta.outputs.branch }}"
+          git add package.json crates/legolas-cli/Cargo.toml
+          git commit -m "${{ steps.meta.outputs.title }}"
+          git push "${lease_args[@]}" -u origin "${{ steps.meta.outputs.branch }}"
+
+      - name: Dispatch CI for bump branch
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        run: gh workflow run ci.yml --ref "${{ steps.meta.outputs.branch }}"
+
+      - name: Resolve release candidate target
+        if: ${{ !inputs.dry_run }}
+        id: candidate_target
+        shell: bash
+        run: |
+          if [ -n "${{ steps.existing_pr.outputs.number }}" ]; then
+            git fetch origin "refs/heads/${{ steps.meta.outputs.branch }}:refs/remotes/origin/${{ steps.meta.outputs.branch }}"
+            target_sha="$(git rev-parse "refs/remotes/origin/${{ steps.meta.outputs.branch }}")"
+          else
+            target_sha="$(git rev-parse HEAD)"
+          fi
+
+          echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch release candidate verification
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        run: gh workflow run release-candidate.yml --ref master -f target_sha="${{ steps.candidate_target.outputs.sha }}"
+
+      - name: Create or reuse draft PR
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        env:
+          DEFAULT_GH_TOKEN: ${{ github.token }}
+          PR_CREATE_TOKEN: ${{ secrets.LEGOLAS_RELEASE_BOT_TOKEN }}
+        run: |
+          printf '%s\n' \
+            "## 배경 / Background" \
+            "" \
+            "- manual release bump workflow로 \`${{ steps.meta.outputs.currentVersion }}\`에서 \`${{ steps.meta.outputs.version }}\`으로 승격합니다." \
+            "- 실제 tag / publish는 이 PR merge 이후 별도 \`release.yml\` workflow에서 진행합니다." \
+            "" \
+            "## 변경 사항 / Changes" \
+            "" \
+            "- \`package.json\` 과 \`crates/legolas-cli/Cargo.toml\` version을 \`${{ steps.meta.outputs.version }}\`으로 맞췄습니다." \
+            "" \
+            "## 검증 / Verification" \
+            "" \
+            "- \`node ./scripts/bump-release-version.mjs ${{ steps.meta.outputs.tag }}\`" \
+            "- \`npm run test:release-contract\`" \
+            "- \`npm test\`" \
+            "- bump branch에 대해 \`legolas-ci\` 와 \`Release Candidate Core Verification\` workflow를 dispatch했습니다." \
+            "" \
+            "## 리스크 / Risks" \
+            "" \
+            "- 실제 tag / publish는 아직 실행하지 않았습니다." \
+            "- merge 후 같은 commit의 candidate verification과 CI를 확인한 뒤 tag를 생성해야 합니다." \
+            > pr-body.md
+
+          if [ -n "$PR_CREATE_TOKEN" ]; then
+            export GH_TOKEN="$PR_CREATE_TOKEN"
+            token_source="LEGOLAS_RELEASE_BOT_TOKEN"
+          else
+            export GH_TOKEN="$DEFAULT_GH_TOKEN"
+            token_source="github.token"
+          fi
+
+          if [ -n "${{ steps.existing_pr.outputs.url }}" ]; then
+            echo "Reusing existing PR: ${{ steps.existing_pr.outputs.url }}"
+            exit 0
+          fi
+
+          if pr_url=$(gh pr create \
+            --draft \
+            --base master \
+            --head "${{ steps.meta.outputs.branch }}" \
+            --title "${{ steps.meta.outputs.title }}" \
+            --body-file pr-body.md \
+            --label skip-changelog 2>/tmp/legolas-gh-pr-create-error.txt); then
+            echo "Created draft PR: $pr_url"
+            exit 0
+          fi
+
+          compare_url="https://github.com/${GITHUB_REPOSITORY}/compare/master...${{ steps.meta.outputs.branch }}?expand=1"
+
+          {
+            echo "### Manual release bump failed to create a PR"
+            echo
+            echo "The bump branch was pushed, but the workflow could not open a draft PR."
+            echo
+            echo "- branch: \`${{ steps.meta.outputs.branch }}\`"
+            echo "- title: \`${{ steps.meta.outputs.title }}\`"
+            echo "- token source: \`$token_source\`"
+            echo "- compare URL: $compare_url"
+            echo
+            echo "Either enable repository Actions permission to create pull requests, or configure \`LEGOLAS_RELEASE_BOT_TOKEN\` with pull request creation permission."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          cat /tmp/legolas-gh-pr-create-error.txt
+          echo "::error::Unable to create a draft PR for ${{ steps.meta.outputs.branch }}. See the step summary for required repository or token changes."
+          exit 1

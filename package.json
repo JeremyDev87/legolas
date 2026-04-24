@@ -1,5 +1,5 @@
 {
-  "name": "legolas",
+  "name": "@jeremyfellaz/legolas",
   "version": "0.1.0",
   "description": "Slim bundles with precision.",
   "homepage": "https://github.com/JeremyDev87/legolas#readme",
@@ -39,10 +39,14 @@
     "optimize": "cargo run -p legolas-cli -- optimize",
     "smoke": "cargo run -p legolas-cli -- --version && cargo run -p legolas-cli -- help && cargo run -p legolas-cli -- scan . && cargo run -p legolas-cli -- visualize . && cargo run -p legolas-cli -- optimize . && node ./scripts/smoke-ci-command.mjs cargo",
     "pack:check": "node ./scripts/check-pack.mjs",
-    "test": "cargo test --workspace"
+    "test": "cargo test --workspace",
+    "test:release-contract": "node --test test/release-workflow-context.test.js test/release-plan.test.js test/bump-release-version.test.js test/github-action-wiring.test.js"
   },
   "engines": {
     "node": ">=18.17"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "cli",

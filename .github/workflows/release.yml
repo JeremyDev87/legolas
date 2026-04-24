@@ -4,88 +4,70 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to rerun, for example v0.1.0 or v0.1.1-beta.1
+        required: true
+        type: string
 
 permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: legolas-release-${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+  cancel-in-progress: false
+
 jobs:
-  prepare-release:
+  validate-release-context:
     if: github.repository == 'JeremyDev87/legolas'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     outputs:
-      package_name: ${{ steps.meta.outputs.name }}
-      package_version: ${{ steps.meta.outputs.version }}
-      tag_name: ${{ steps.meta.outputs.tag_name }}
+      package_name: ${{ steps.release_plan.outputs.package_name }}
+      package_version: ${{ steps.release_plan.outputs.package_version }}
+      release_tag: ${{ steps.release_plan.outputs.release_tag }}
+      dist_tag: ${{ steps.release_plan.outputs.dist_tag }}
+      is_prerelease: ${{ steps.release_plan.outputs.is_prerelease }}
+      release_commit_sha: ${{ steps.capture_release_commit.outputs.release_commit_sha }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout tagged release ref
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
+          ref: ${{ github.event_name == 'push' && github.ref || format('refs/tags/{0}', inputs.release_tag) }}
+          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
-      - name: Setup Rust toolchain
-        run: |
-          rustup toolchain install 1.95.0 --profile minimal
-          rustup default 1.95.0
-
-      - name: Read package metadata
-        id: meta
-        run: |
-          echo "name=$(node -p 'require(\"./package.json\").name')" >> "$GITHUB_OUTPUT"
-          echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
-          echo "tag_name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      - name: Verify release tag matches package version
-        run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          CLI_VERSION="$(cargo run -q -p legolas-cli -- --version)"
-          EXPECTED_TAG="v${PACKAGE_VERSION}"
-
-          git fetch origin refs/heads/master:refs/remotes/origin/master
-
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/master"; then
-            echo "Tagged commit ${GITHUB_SHA} is not reachable from origin/master"
-            exit 1
-          fi
-
-          if [ "$TAG_NAME" != "$EXPECTED_TAG" ]; then
-            echo "Expected release tag ${EXPECTED_TAG}, got ${TAG_NAME}"
-            exit 1
-          fi
-
-          if [ "$CLI_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "Expected CLI version ${PACKAGE_VERSION}, got ${CLI_VERSION}"
-            exit 1
-          fi
+      - name: Build release plan
+        id: release_plan
         env:
-          GITHUB_REF: ${{ github.ref }}
-          GITHUB_SHA: ${{ github.sha }}
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          RELEASE_GITHUB_REF: ${{ github.ref }}
+          RELEASE_GITHUB_REF_NAME: ${{ github.ref_name }}
+          RELEASE_SELECTED_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+        run: node ./scripts/release-plan.mjs "$RELEASE_EVENT_NAME" "$RELEASE_GITHUB_REF" "$RELEASE_GITHUB_REF_NAME" "$RELEASE_SELECTED_TAG"
 
-      - name: Create GitHub release draft
-        run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
+      - name: Capture release commit
+        id: capture_release_commit
+        run: echo "release_commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Release ${TAG_NAME} already exists"
-          else
-            gh release create "$TAG_NAME" --draft --generate-notes --title "$TAG_NAME" --verify-tag
-          fi
+      - name: Verify release commit is reachable from master
         env:
-          GITHUB_REF: ${{ github.ref }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT_SHA: ${{ steps.capture_release_commit.outputs.release_commit_sha }}
+        run: |
+          compare_status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${RELEASE_COMMIT_SHA}...master" --jq .status)"
+          node --input-type=module -e 'import { assertReleaseCommitReachableFromMaster } from "./scripts/assert-release-workflow-context.mjs"; assertReleaseCommitReachableFromMaster({ releaseCommitSha: process.argv[1], comparisonStatus: process.argv[2] });' "$RELEASE_COMMIT_SHA" "$compare_status"
 
   rust-release-binaries:
     if: github.repository == 'JeremyDev87/legolas'
-    needs: prepare-release
+    needs: validate-release-context
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 20
     strategy:
@@ -100,7 +82,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             binary_name: legolas.exe
             asset_name: legolas-x86_64-pc-windows-msvc.exe
-          - runs-on: macos-13
+          - runs-on: macos-15-intel
             target: x86_64-apple-darwin
             binary_name: legolas
             asset_name: legolas-x86_64-apple-darwin
@@ -110,8 +92,11 @@ jobs:
             asset_name: legolas-aarch64-apple-darwin
 
     steps:
-      - name: Checkout code
+      - name: Checkout release commit
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.validate-release-context.outputs.release_commit_sha }}
+          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
@@ -148,22 +133,25 @@ jobs:
           mkdir -p release-assets
           cp "vendor/${{ matrix.target }}/${{ matrix.binary_name }}" "release-assets/${{ matrix.asset_name }}"
 
-      - name: Upload binary asset to release draft
-        run: gh release upload "${{ needs.prepare-release.outputs.tag_name }}" "release-assets/${{ matrix.asset_name }}" --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: release-assets/${{ matrix.asset_name }}
+          if-no-files-found: error
 
   publish:
     if: github.repository == 'JeremyDev87/legolas'
-    needs: [prepare-release, rust-release-binaries]
+    needs: [validate-release-context, rust-release-binaries]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout code
+      - name: Checkout release commit
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
+          ref: ${{ needs.validate-release-context.outputs.release_commit_sha }}
+          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
@@ -177,14 +165,15 @@ jobs:
           rustup default 1.95.0
 
       - name: Download staged release binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: legolas-*
+          merge-multiple: true
+
+      - name: Stage vendor layout from release artifacts
         shell: bash
         run: |
-          mkdir -p release-assets
-
-          gh release download "${{ needs.prepare-release.outputs.tag_name }}" \
-            --pattern "legolas-*" \
-            --dir release-assets
-
           mkdir -p vendor/x86_64-unknown-linux-gnu
           mkdir -p vendor/x86_64-pc-windows-msvc
           mkdir -p vendor/x86_64-apple-darwin
@@ -198,8 +187,6 @@ jobs:
           chmod 755 vendor/x86_64-unknown-linux-gnu/legolas
           chmod 755 vendor/x86_64-apple-darwin/legolas
           chmod 755 vendor/aarch64-apple-darwin/legolas
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify vendor layout
         run: |
@@ -209,13 +196,13 @@ jobs:
             x86_64-apple-darwin \
             aarch64-apple-darwin
 
-      - name: Read package metadata
-        id: meta
-        run: |
-          echo "name=$(node -p 'require(\"./package.json\").name')" >> "$GITHUB_OUTPUT"
-          echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+      - name: Validate release wiring
+        run: node ./scripts/validate-release-wiring.mjs
 
-      - name: Run tests
+      - name: Run release contract tests
+        run: npm run test:release-contract
+
+      - name: Run Rust workspace tests
         run: npm test
 
       - name: Smoke test CLI
@@ -237,6 +224,7 @@ jobs:
           PACK_METADATA="$(mktemp)"
           npm pack --dry-run --json --cache ./.npm-cache > "$PACK_METADATA"
 
+          # shellcheck disable=SC2016
           node -e '
             const fs = require("fs");
             const [result] = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -245,10 +233,17 @@ jobs:
           ' "$PACK_METADATA" >> "$GITHUB_OUTPUT"
 
       - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          LOCAL_INTEGRITY: ${{ steps.package_artifact.outputs.integrity }}
+          LOCAL_SHASUM: ${{ steps.package_artifact.outputs.shasum }}
+          PACKAGE_NAME: ${{ needs.validate-release-context.outputs.package_name }}
+          PACKAGE_VERSION: ${{ needs.validate-release-context.outputs.package_version }}
+          RELEASE_DIST_TAG: ${{ needs.validate-release-context.outputs.dist_tag }}
         run: |
           PUBLISH_LOG="$(mktemp)"
 
-          if npm publish --access public --provenance >"$PUBLISH_LOG" 2>&1; then
+          if npm publish --access public --provenance --tag "$RELEASE_DIST_TAG" >"$PUBLISH_LOG" 2>&1; then
             cat "$PUBLISH_LOG"
             exit 0
           fi
@@ -256,6 +251,7 @@ jobs:
           cat "$PUBLISH_LOG"
 
           for attempt in 1 2 3 4 5; do
+            echo "npm publish reconciliation attempt ${attempt}"
             PUBLISHED_VERSION="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version 2>/dev/null || true)"
             REGISTRY_INTEGRITY="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" dist.integrity 2>/dev/null || true)"
             REGISTRY_SHASUM="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" dist.shasum 2>/dev/null || true)"
@@ -292,25 +288,55 @@ jobs:
           done
 
           exit 1
+
+      - name: Create or reuse GitHub release draft
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          LOCAL_INTEGRITY: ${{ steps.package_artifact.outputs.integrity }}
-          LOCAL_SHASUM: ${{ steps.package_artifact.outputs.shasum }}
-          PACKAGE_NAME: ${{ steps.meta.outputs.name }}
-          PACKAGE_VERSION: ${{ steps.meta.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.validate-release-context.outputs.release_tag }}
+          IS_PRERELEASE: ${{ needs.validate-release-context.outputs.is_prerelease }}
+        run: |
+          release_args=()
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            release_args+=(--prerelease)
+          fi
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release ${TAG_NAME} already exists"
+          else
+            gh release create "$TAG_NAME" --draft --generate-notes --title "$TAG_NAME" --verify-tag "${release_args[@]}"
+          fi
+
+      - name: Upload binary assets to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.validate-release-context.outputs.release_tag }}
+        run: gh release upload "$TAG_NAME" release-assets/* --clobber
 
       - name: Publish GitHub release
-        run: |
-          TAG_NAME="${{ needs.prepare-release.outputs.tag_name }}"
-          RELEASE_ID="$(gh release view "$TAG_NAME" --json id --jq .id)"
-
-          gh api \
-            --method PATCH \
-            -H "Accept: application/vnd.github+json" \
-            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
-            -f draft=false \
-            -f make_latest=true \
-            -f name="${TAG_NAME}"
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.validate-release-context.outputs.release_tag }}
+          IS_PRERELEASE: ${{ needs.validate-release-context.outputs.is_prerelease }}
+        run: |
+          RELEASE_ID="$(gh release view "$TAG_NAME" --json id --jq .id)"
+
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+              -f draft=false \
+              -f prerelease=true \
+              -f make_latest=false \
+              -f name="${TAG_NAME}"
+          else
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+              -f draft=false \
+              -f prerelease=false \
+              -f make_latest=true \
+              -f name="${TAG_NAME}"
+          fi

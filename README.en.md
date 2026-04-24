@@ -26,9 +26,9 @@ Legolas scans those signals and turns them into an optimization report that huma
 ## Commands
 
 ```bash
-npx legolas scan
-npx legolas visualize
-npx legolas optimize
+npx @jeremyfellaz/legolas scan
+npx @jeremyfellaz/legolas visualize
+npx @jeremyfellaz/legolas optimize
 ```
 
 You can also point Legolas at a specific project path:
