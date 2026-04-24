@@ -55,6 +55,18 @@ test("manual bump workflow dispatches a dispatch-enabled CI workflow", async () 
   assert.match(manualBumpWorkflow, /gh workflow run ci\.yml --ref/);
 });
 
+test("release workflows read Cargo manifest versions with a shell-safe parser", async () => {
+  const manualBumpWorkflow = await readFile(".github/workflows/manual-release-bump.yml", "utf8");
+  const releaseCandidateWorkflow = await readFile(".github/workflows/release-candidate.yml", "utf8");
+  const cargoVersionSedParser = /sed -n .*crates\/legolas-cli\/Cargo\.toml/;
+  const cargoVersionParser = /awk -F '"' '\/\^version\[\[:space:\]\]\*=\[\[:space:\]\]\*"\/ \{ print \$2; exit \}' crates\/legolas-cli\/Cargo\.toml/;
+
+  assert.doesNotMatch(manualBumpWorkflow, cargoVersionSedParser);
+  assert.doesNotMatch(releaseCandidateWorkflow, cargoVersionSedParser);
+  assert.match(manualBumpWorkflow, cargoVersionParser);
+  assert.match(releaseCandidateWorkflow, cargoVersionParser);
+});
+
 test("release workflow rejects tags whose commit is outside master", async () => {
   const workflow = await readFile(".github/workflows/release.yml", "utf8");
 

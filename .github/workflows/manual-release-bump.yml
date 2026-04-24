@@ -60,7 +60,7 @@ jobs:
           fi
 
           current_version="$(node -p "require('./package.json').version")"
-          current_cargo_version="$(sed -n 's/^version = "\\(.*\\)"$/\\1/p' crates/legolas-cli/Cargo.toml | head -n 1)"
+          current_cargo_version="$(awk -F '"' '/^version[[:space:]]*=[[:space:]]*"/ { print $2; exit }' crates/legolas-cli/Cargo.toml)"
           expected_version="${tag#v}"
           branch="$(node --input-type=module -e "import { createManualBumpBranchName } from './scripts/bump-release-version.mjs'; console.log(createManualBumpBranchName(process.argv[1]));" "$tag")"
 
