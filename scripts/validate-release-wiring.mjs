@@ -102,6 +102,11 @@ function validateReleaseWorkflow(releaseText) {
   assertContains(releaseText, "npm run pack:smoke", "release packed install smoke");
   assertContains(releaseText, '--tag "$RELEASE_DIST_TAG"', "release npm dist-tag publish");
   assertContains(releaseText, "gh release upload", "release asset upload");
+  assertContains(releaseText, "gh release view \"$TAG_NAME\" --json databaseId --jq .databaseId", "release REST release id lookup");
+  assert.ok(
+    !releaseText.includes("gh release view \"$TAG_NAME\" --json id --jq .id"),
+    "release workflow must not pass GraphQL release node IDs to REST release endpoints",
+  );
   assert.ok(!releaseText.includes("fetch-depth: 0"), "release workflow should not use full-history checkout");
 }
 
