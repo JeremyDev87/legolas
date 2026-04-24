@@ -42,6 +42,25 @@ fn collect_source_files_skips_ignored_directories_and_non_source_files() {
     write_file(root, "tests/unit.test.ts", "export const ignored = true;");
     write_file(root, "__tests__/unit.ts", "export const ignored = true;");
     write_file(root, "build/output.jsx", "export const ignored = true;");
+    for directory in [
+        "target",
+        ".cache",
+        ".parcel-cache",
+        ".vite",
+        ".svelte-kit",
+        ".nuxt",
+        ".yarn",
+        ".pnpm-store",
+        "vendor",
+        "tmp",
+        "temp",
+    ] {
+        write_file(
+            root,
+            &format!("{directory}/generated.tsx"),
+            "export const ignored = true;",
+        );
+    }
     write_file(
         root,
         ".git/hooks/pre-commit.js",
