@@ -25,5 +25,7 @@ pub enum LegolasError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
+    Ignore(#[from] ignore::Error),
+    #[error(transparent)]
     JsonParse(#[from] serde_json::Error),
 }

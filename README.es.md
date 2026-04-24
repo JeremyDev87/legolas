@@ -100,7 +100,8 @@ Legolas descubre automáticamente `legolas.config.json` desde la raíz del proye
 ```json
 {
   "scan": {
-    "path": "src"
+    "path": "src",
+    "ignorePatterns": ["generated/**", "!generated/keep.ts"]
   },
   "visualize": {
     "limit": 12
@@ -126,6 +127,8 @@ Legolas descubre automáticamente `legolas.config.json` desde la raíz del proye
   }
 }
 ```
+
+El escaneo de código fuente también respeta el `.gitignore` del proyecto y el `.legolasignore` de la raíz. `scan.ignorePatterns` usa patrones de ruta de estilo POSIX relativos a la raíz resuelta del proyecto y admite patrones de excepción con `!` como `.gitignore`.
 
 `potentialKbSaved` y `duplicatePackageCount` son reglas de máximo: valores reales más altos son peores. `dynamicImportCount` es una regla de mínimo: muy pocas importaciones dinámicas pueden producir advertencia o fallo.
 

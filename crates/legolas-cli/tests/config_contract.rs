@@ -3,6 +3,7 @@ mod support;
 use std::{fs, path::Path};
 
 use assert_cmd::Command;
+use serde_json::Value;
 use tempfile::tempdir;
 
 fn run_cli(args: &[&str]) -> std::process::Output {
@@ -32,6 +33,10 @@ fn stderr(output: &std::process::Output) -> String {
 
 fn normalize(value: &str) -> String {
     value.replace('\\', "/")
+}
+
+fn parse_json_stdout(output: &std::process::Output) -> Value {
+    serde_json::from_str(&stdout(output)).expect("parse json stdout")
 }
 
 #[test]
@@ -248,4 +253,109 @@ fn sarif_mode_suppresses_config_warnings_to_keep_machine_output_clean() {
         support::normalize_sarif_output(&stdout(&expected))
     );
     assert_eq!(stderr(&output), "");
+}
+
+#[test]
+fn explicit_config_path_applies_scan_ignore_patterns_to_scan_json() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let root = temp_dir.path();
+    let config_path = root.join("legolas.config.json");
+    write_ignore_config_fixture(root, &config_path);
+
+    let output = run_cli(&[
+        "scan",
+        &root.display().to_string(),
+        "--config",
+        &config_path.display().to_string(),
+        "--json",
+    ]);
+
+    assert!(output.status.success());
+    assert_eq!(stderr(&output), "");
+    let json = parse_json_stdout(&output);
+    assert_eq!(json["sourceSummary"]["filesScanned"], 1);
+    assert_eq!(json["sourceSummary"]["dynamicImports"], 0);
+    assert!(!stdout(&output).contains("generated/Ignored.tsx"));
+}
+
+#[test]
+fn discovered_config_applies_scan_ignore_patterns_across_commands() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let root = temp_dir.path();
+    let config_path = root.join("legolas.config.json");
+    write_ignore_config_fixture(root, &config_path);
+
+    let scan_output = run_cli_in_dir(root, &["scan", "--json"]);
+    assert!(scan_output.status.success());
+    assert_eq!(
+        parse_json_stdout(&scan_output)["sourceSummary"]["filesScanned"],
+        1
+    );
+    assert_eq!(
+        parse_json_stdout(&scan_output)["sourceSummary"]["dynamicImports"],
+        0
+    );
+
+    let visualize_output = run_cli_in_dir(root, &["visualize"]);
+    assert!(visualize_output.status.success());
+    assert_eq!(stderr(&visualize_output), "");
+
+    let budget_output = run_cli_in_dir(root, &["budget", "--json"]);
+    assert!(budget_output.status.success());
+    let budget = parse_json_stdout(&budget_output);
+    let dynamic_rule = budget["rules"]
+        .as_array()
+        .expect("budget rules array")
+        .iter()
+        .find(|rule| rule["key"] == "dynamicImportCount")
+        .expect("dynamic import budget rule");
+    assert_eq!(dynamic_rule["actual"], 0);
+
+    let ci_output = run_cli_in_dir(root, &["ci", "--json"]);
+    assert_eq!(ci_output.status.code(), Some(1));
+    let ci = parse_json_stdout(&ci_output);
+    let dynamic_rule = ci["rules"]
+        .as_array()
+        .expect("ci rules array")
+        .iter()
+        .find(|rule| rule["key"] == "dynamicImportCount")
+        .expect("dynamic import ci rule");
+    assert_eq!(dynamic_rule["actual"], 0);
+}
+
+fn write_ignore_config_fixture(root: &Path, config_path: &Path) {
+    fs::write(
+        root.join("package.json"),
+        r#"{
+  "name": "ignore-config-fixture",
+  "dependencies": {
+    "chart.js": "^4.0.0"
+  }
+}
+"#,
+    )
+    .expect("write package.json");
+    write_file(root, "src/App.tsx", "export const App = () => null;\n");
+    write_file(
+        root,
+        "generated/Ignored.tsx",
+        "export const loadChart = () => import(\"chart.js\");\n",
+    );
+    fs::write(
+        config_path,
+        r#"{
+  "scan": {
+    "ignorePatterns": ["generated/**"]
+  }
+}
+"#,
+    )
+    .expect("write config");
+}
+
+fn write_file(root: &Path, relative_path: &str, contents: &str) {
+    let path = root.join(relative_path);
+    let parent = path.parent().expect("fixture file parent");
+    fs::create_dir_all(parent).expect("create fixture directory");
+    fs::write(path, contents).expect("write fixture file");
 }

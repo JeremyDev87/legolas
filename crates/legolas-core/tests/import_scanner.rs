@@ -12,7 +12,8 @@ use std::os::windows::fs::symlink_dir as create_dir_symlink;
 
 use legolas_core::{
     import_scanner::{
-        collect_source_files, scan_imports, scan_imports_with_aliases, ImportedPackageRecord,
+        collect_source_files, collect_source_files_with_ignore_patterns, scan_imports,
+        scan_imports_with_aliases, ImportedPackageRecord,
     },
     workspace::load_alias_config,
     FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata, TreeShakingWarning,
@@ -80,6 +81,120 @@ fn collect_source_files_skips_ignored_directories_and_non_source_files() {
             "src/legacy.cts",
         ]
     );
+}
+
+#[test]
+fn collect_source_files_applies_gitignore_with_negation() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(root, ".gitignore", "generated/**\n!generated/keep.ts\n");
+    write_file(root, "src/App.tsx", "export const App = () => null;");
+    write_file(
+        root,
+        "generated/Ignored.tsx",
+        "export const ignored = true;",
+    );
+    write_file(root, "generated/keep.ts", "export const kept = true;");
+
+    let files = collect_source_files(root).expect("collect source files");
+
+    assert_eq!(
+        to_posix_paths(root, &files),
+        vec!["generated/keep.ts", "src/App.tsx"]
+    );
+}
+
+#[test]
+fn collect_source_files_applies_nested_gitignore_files() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(root, "src/.gitignore", "ignored.ts\n");
+    write_file(root, "src/App.tsx", "export const App = () => null;");
+    write_file(root, "src/ignored.ts", "export const ignored = true;");
+
+    let files = collect_source_files(root).expect("collect source files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+}
+
+#[test]
+fn collect_source_files_applies_root_legolasignore() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(root, ".legolasignore", "generated/**\n");
+    write_file(root, "src/App.tsx", "export const App = () => null;");
+    write_file(
+        root,
+        "generated/Ignored.tsx",
+        "export const ignored = true;",
+    );
+
+    let files = collect_source_files(root).expect("collect source files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+}
+
+#[test]
+fn collect_source_files_does_not_cascade_nested_legolasignore_files() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(root, "src/.legolasignore", "ignored.ts\n");
+    write_file(root, "src/App.tsx", "export const App = () => null;");
+    write_file(root, "src/ignored.ts", "export const ignored = true;");
+
+    let files = collect_source_files(root).expect("collect source files");
+
+    assert_eq!(
+        to_posix_paths(root, &files),
+        vec!["src/App.tsx", "src/ignored.ts"]
+    );
+}
+
+#[test]
+fn collect_source_files_applies_config_ignore_patterns_with_negation() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(root, "src/App.tsx", "export const App = () => null;");
+    write_file(
+        root,
+        "generated/Ignored.tsx",
+        "export const ignored = true;",
+    );
+    write_file(root, "generated/keep.ts", "export const kept = true;");
+
+    let patterns = vec!["generated/**".to_string(), "!generated/keep.ts".to_string()];
+    let files = collect_source_files_with_ignore_patterns(root, &patterns)
+        .expect("collect source files with config ignore patterns");
+
+    assert_eq!(
+        to_posix_paths(root, &files),
+        vec!["generated/keep.ts", "src/App.tsx"]
+    );
+}
+
+#[test]
+fn collect_source_files_keeps_builtin_ignores_non_overridable() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(root, ".gitignore", "!node_modules/pkg/index.ts\n");
+    write_file(root, "src/App.tsx", "export const App = () => null;");
+    write_file(
+        root,
+        "node_modules/pkg/index.ts",
+        "export const ignored = true;",
+    );
+
+    let patterns = vec!["!node_modules/pkg/index.ts".to_string()];
+    let files = collect_source_files_with_ignore_patterns(root, &patterns)
+        .expect("collect source files with config ignore patterns");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
 }
 
 #[test]

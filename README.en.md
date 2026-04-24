@@ -100,7 +100,8 @@ Legolas automatically discovers `legolas.config.json` from the project root. You
 ```json
 {
   "scan": {
-    "path": "src"
+    "path": "src",
+    "ignorePatterns": ["generated/**", "!generated/keep.ts"]
   },
   "visualize": {
     "limit": 12
@@ -126,6 +127,8 @@ Legolas automatically discovers `legolas.config.json` from the project root. You
   }
 }
 ```
+
+Source scanning also honors the project's `.gitignore` and root `.legolasignore`. `scan.ignorePatterns` uses POSIX-style path patterns relative to the resolved project root and supports `!` exception patterns like `.gitignore`.
 
 `potentialKbSaved` and `duplicatePackageCount` are maximum-style rules: higher actual values are worse. `dynamicImportCount` is a minimum-style rule: too few dynamic imports can warn or fail.
 
