@@ -4,7 +4,7 @@ Slim bundles with precision.
 Usage:
   legolas scan [path] [--config file] [--json | --sarif] [--write-baseline file] [--baseline file --regression-only]
   legolas visualize [path] [--config file] [--limit 10]
-  legolas optimize [path] [--config file] [--top 5] [--baseline file --regression-only]
+  legolas optimize [path] [--config file] [--top 5] [--json] [--baseline file --regression-only]
   legolas budget [path] [--config file] [--json] [--baseline file --regression-only]
   legolas ci [path] [--config file] [--json | --sarif] [--baseline file --regression-only]
   legolas help
