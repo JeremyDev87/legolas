@@ -114,10 +114,14 @@ function isDirectExecutionEntry() {
     return false;
   }
 
-  return (
-    realpathSync(fileURLToPath(import.meta.url))
-    === realpathSync(path.resolve(process.argv[1]))
-  );
+  try {
+    return (
+      realpathSync(fileURLToPath(import.meta.url))
+      === realpathSync(path.resolve(process.argv[1]))
+    );
+  } catch {
+    return false;
+  }
 }
 
 const isDirectExecution = isDirectExecutionEntry();
