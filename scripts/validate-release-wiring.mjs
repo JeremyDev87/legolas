@@ -14,6 +14,7 @@ export const releaseWiringRequiredFiles = {
   releasePlan: "scripts/release-plan.mjs",
   releaseHelpers: "scripts/lib/release.mjs",
   releaseBumpScript: "scripts/bump-release-version.mjs",
+  packedInstallSmoke: "scripts/smoke-packed-install.mjs",
   releaseContextTest: "test/release-workflow-context.test.js",
   releasePlanTest: "test/release-plan.test.js",
   releaseBumpTest: "test/bump-release-version.test.js",
@@ -33,6 +34,7 @@ export async function validateReleaseWiring(repoRoot = process.cwd()) {
   validateReleasePlanScript(fileContents.releasePlan);
   validateReleaseHelpers(fileContents.releaseHelpers);
   validateReleaseBumpScript(fileContents.releaseBumpScript);
+  validatePackedInstallSmoke(fileContents.packedInstallSmoke);
   validateTests(fileContents.releaseContextTest, fileContents.releasePlanTest, fileContents.releaseBumpTest, fileContents.githubActionWiringTest);
 
   return {
@@ -58,6 +60,7 @@ function validatePackageManifest(packageManifest) {
     packageManifest.scripts?.["test:release-contract"],
     "node --test test/release-workflow-context.test.js test/release-plan.test.js test/bump-release-version.test.js test/github-action-wiring.test.js",
   );
+  assert.equal(packageManifest.scripts?.["pack:smoke"], "node ./scripts/smoke-packed-install.mjs");
 }
 
 function validateCargoManifest(cargoManifestText, expectedVersion) {
@@ -77,6 +80,7 @@ function validateCiWorkflow(ciWorkflowText) {
   assertContains(ciWorkflowText, "Release Contract", "ci release contract job");
   assertContains(ciWorkflowText, "node ./scripts/validate-release-wiring.mjs", "ci release wiring validation");
   assertContains(ciWorkflowText, "npm run test:release-contract", "ci release contract tests");
+  assertContains(ciWorkflowText, "npm run pack:smoke", "ci packed install smoke");
 }
 
 function validateReleaseWorkflow(releaseText) {
@@ -95,6 +99,7 @@ function validateReleaseWorkflow(releaseText) {
   assertContains(releaseText, "ref: ${{ needs.validate-release-context.outputs.release_commit_sha }}", "release downstream sha checkout");
   assertContains(releaseText, "actions/upload-artifact@v4", "release binary artifact upload");
   assertContains(releaseText, "actions/download-artifact@v4", "release binary artifact download");
+  assertContains(releaseText, "npm run pack:smoke", "release packed install smoke");
   assertContains(releaseText, '--tag "$RELEASE_DIST_TAG"', "release npm dist-tag publish");
   assertContains(releaseText, "gh release upload", "release asset upload");
   assert.ok(!releaseText.includes("fetch-depth: 0"), "release workflow should not use full-history checkout");
@@ -103,18 +108,27 @@ function validateReleaseWorkflow(releaseText) {
 function validateReleaseCandidateWorkflow(releaseCandidateText) {
   assertContains(releaseCandidateText, "workflow_dispatch:", "release candidate manual trigger");
   assertContains(releaseCandidateText, "target_sha:", "release candidate target sha input");
+  assertContains(releaseCandidateText, "TARGET_SHA_INPUT: ${{ inputs.target_sha }}", "release candidate target sha env handoff");
+  assertContains(releaseCandidateText, "target_sha must be a full 40-character commit SHA", "release candidate target sha validation");
   assertContains(releaseCandidateText, "Ensure release tag does not already exist", "release candidate tag guard");
   assertContains(releaseCandidateText, "node ./scripts/validate-release-wiring.mjs", "release candidate release wiring validation");
   assertContains(releaseCandidateText, "npm run test:release-contract", "release candidate release tests");
   assertContains(releaseCandidateText, "cargo build --release -p legolas-cli", "release candidate release build");
   assertContains(releaseCandidateText, "node ./scripts/verify-vendor-layout.mjs", "release candidate vendor verification");
   assertContains(releaseCandidateText, "npm run pack:check", "release candidate pack check");
+  assertContains(releaseCandidateText, "npm run pack:smoke", "release candidate packed install smoke");
   assertContains(releaseCandidateText, "node ./scripts/smoke-ci-command.mjs launcher", "release candidate packaged launcher smoke");
+  assert.ok(
+    !releaseCandidateText.includes('"${{ inputs.target_sha }}"'),
+    "release candidate workflow should not interpolate target_sha directly inside bash",
+  );
 }
 
 function validateManualReleaseBumpWorkflow(manualReleaseBumpText) {
   assertContains(manualReleaseBumpText, "workflow_dispatch:", "manual bump workflow trigger");
   assertContains(manualReleaseBumpText, "dry_run:", "manual bump dry-run input");
+  assertContains(manualReleaseBumpText, "INPUT_TAG: ${{ inputs.tag }}", "manual bump tag env handoff");
+  assertContains(manualReleaseBumpText, 'tag="$INPUT_TAG"', "manual bump tag shell variable usage");
   assertContains(manualReleaseBumpText, "node ./scripts/bump-release-version.mjs", "manual bump script usage");
   assertContains(manualReleaseBumpText, "npm run test:release-contract", "manual bump release contract tests");
   assertContains(manualReleaseBumpText, "gh workflow run ci.yml --ref", "manual bump CI dispatch");
@@ -124,6 +138,10 @@ function validateManualReleaseBumpWorkflow(manualReleaseBumpText) {
   assertContains(manualReleaseBumpText, "skip-changelog", "manual bump skip-changelog label");
   assertContains(manualReleaseBumpText, "LEGOLAS_RELEASE_BOT_TOKEN", "manual bump dedicated PR token");
   assertContains(manualReleaseBumpText, "Unable to create a draft PR", "manual bump hard-fail PR creation");
+  assert.ok(
+    !manualReleaseBumpText.includes('tag="${{ inputs.tag }}"'),
+    "manual bump workflow should not interpolate input tag directly inside bash",
+  );
 }
 
 function validateReleaseContextAssertion(releaseContextAssertionText) {
@@ -153,6 +171,15 @@ function validateReleaseBumpScript(releaseBumpScriptText) {
   assertContains(releaseBumpScriptText, "createManualBumpBranchName", "release bump branch naming");
   assertContains(releaseBumpScriptText, "crates/legolas-cli/Cargo.toml", "release bump cargo manifest update");
   assertContains(releaseBumpScriptText, "assertReleaseUpgrade", "release bump upgrade guard");
+}
+
+function validatePackedInstallSmoke(packedInstallSmokeText) {
+  assertContains(packedInstallSmokeText, "npm", "packed install smoke npm usage");
+  assertContains(packedInstallSmokeText, "pack", "packed install smoke pack command");
+  assertContains(packedInstallSmokeText, "install", "packed install smoke install command");
+  assertContains(packedInstallSmokeText, "node_modules", "packed install smoke installed bin path");
+  assertContains(packedInstallSmokeText, "--version", "packed install smoke version command");
+  assertContains(packedInstallSmokeText, "exec", "packed install smoke Windows npm exec invocation");
 }
 
 function validateTests(releaseContextTest, releasePlanTest, releaseBumpTest, githubActionWiringTest) {

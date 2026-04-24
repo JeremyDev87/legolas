@@ -342,22 +342,7 @@ fn analysis_value_to_object(analysis: &legolas_core::Analysis) -> Result<Map<Str
 }
 
 fn read_package_version() -> Result<String> {
-    let package_json = fs::read_to_string(workspace_root().join("package.json"))?;
-    let value = serde_json::from_str::<serde_json::Value>(&package_json)?;
-
-    Ok(value
-        .get("version")
-        .and_then(|version| version.as_str())
-        .unwrap_or("0.0.0")
-        .to_string())
-}
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("workspace root")
-        .to_path_buf()
+    Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
 fn resolve_loaded_config(parsed: &argv::CliArgs) -> Result<Option<LoadedConfig>> {

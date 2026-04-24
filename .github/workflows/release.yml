@@ -218,6 +218,9 @@ jobs:
       - name: Verify package tarball
         run: npm run pack:check
 
+      - name: Smoke test packed install
+        run: npm run pack:smoke
+
       - name: Read package tarball identity
         id: package_artifact
         run: |

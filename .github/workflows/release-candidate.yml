@@ -31,11 +31,19 @@ jobs:
       - name: Resolve verification target
         id: target
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_SHA: ${{ github.sha }}
+          TARGET_SHA_INPUT: ${{ inputs.target_sha }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "sha=${{ inputs.target_sha }}" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if ! [[ "$TARGET_SHA_INPUT" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+              echo "target_sha must be a full 40-character commit SHA."
+              exit 1
+            fi
+            echo "sha=$TARGET_SHA_INPUT" >> "$GITHUB_OUTPUT"
           else
-            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check out candidate commit
@@ -79,9 +87,11 @@ jobs:
 
       - name: Ensure release tag does not already exist
         shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
         run: |
-          if git ls-remote --exit-code --tags origin "${{ steps.meta.outputs.release_tag }}" >/dev/null 2>&1; then
-            echo "Release tag ${{ steps.meta.outputs.release_tag }} already exists on origin."
+          if git ls-remote --exit-code --tags origin "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release tag $RELEASE_TAG already exists on origin."
             exit 1
           fi
 
@@ -106,6 +116,9 @@ jobs:
       - name: Verify package tarball
         run: npm run pack:check
 
+      - name: Smoke test packed install
+        run: npm run pack:smoke
+
       - name: Smoke test packaged launcher
         run: |
           node ./bin/legolas.js --version
@@ -116,13 +129,17 @@ jobs:
       - name: Summarize verification
         if: always()
         shell: bash
+        env:
+          PACKAGE_VERSION: ${{ steps.meta.outputs.package_version }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
         run: |
           {
             echo "### Release candidate verification"
             echo
-            echo "- target sha: \`${{ steps.target.outputs.sha }}\`"
-            echo "- candidate tag: \`${{ steps.meta.outputs.release_tag }}\`"
-            echo "- package version: \`${{ steps.meta.outputs.package_version }}\`"
+            echo "- target sha: \`${TARGET_SHA}\`"
+            echo "- candidate tag: \`${RELEASE_TAG}\`"
+            echo "- package version: \`${PACKAGE_VERSION}\`"
             echo
             echo "Confirm the matching \`legolas-ci\` run for the same commit before creating the tag."
           } >> "$GITHUB_STEP_SUMMARY"

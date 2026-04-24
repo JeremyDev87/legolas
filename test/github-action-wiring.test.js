@@ -24,7 +24,7 @@ async function copyReleaseWiringSupportFiles(repoRoot) {
 test("release wiring validation passes for the checked-in GitHub automation files", async () => {
   const summary = await validateReleaseWiring(process.cwd());
 
-  assert.equal(summary.checkedFiles.length, 14);
+  assert.equal(summary.checkedFiles.length, 15);
   assert.equal(summary.packageName, "@jeremyfellaz/legolas");
 });
 
@@ -34,7 +34,7 @@ test("release wiring validation accepts bumped manifest versions", async () => {
 
   const summary = await validateReleaseWiring(repoRoot);
 
-  assert.equal(summary.checkedFiles.length, 14);
+  assert.equal(summary.checkedFiles.length, 15);
   assert.equal(summary.packageName, "@jeremyfellaz/legolas");
 });
 
@@ -42,8 +42,9 @@ test("manual bump workflow validates the actual bump PR head for release candida
   const workflow = await readFile(".github/workflows/manual-release-bump.yml", "utf8");
 
   assert.match(workflow, /name: Resolve release candidate target/);
-  assert.match(workflow, /refs\/remotes\/origin\/\$\{\{ steps\.meta\.outputs\.branch \}\}/);
-  assert.match(workflow, /target_sha="\$\{\{ steps\.candidate_target\.outputs\.sha \}\}"/);
+  assert.match(workflow, /refs\/remotes\/origin\/\$\{BUMP_BRANCH\}/);
+  assert.match(workflow, /CANDIDATE_SHA: \$\{\{ steps\.candidate_target\.outputs\.sha \}\}/);
+  assert.match(workflow, /target_sha="\$CANDIDATE_SHA"/);
 });
 
 test("manual bump workflow dispatches a dispatch-enabled CI workflow", async () => {
