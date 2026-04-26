@@ -22,6 +22,11 @@ pub fn read_oracle(relative_path: &str) -> String {
 }
 
 #[allow(dead_code)]
+pub fn expected_version_output() -> String {
+    format!("{}\n", env!("CARGO_PKG_VERSION"))
+}
+
+#[allow(dead_code)]
 pub fn normalize_cli_output(output: &str) -> String {
     to_posix(output.to_string()).replace(
         &to_posix(
