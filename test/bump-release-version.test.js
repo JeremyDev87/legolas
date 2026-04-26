@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import {
   bumpReleaseVersion,
   createManualBumpBranchName,
+  validatedVersionFilePaths,
+  versionFilePaths,
 } from "../scripts/bump-release-version.mjs";
 import { createReleaseFixture } from "./helpers/release-fixture.mjs";
 
@@ -28,6 +30,18 @@ test("bumpReleaseVersion updates package.json and cargo manifest together", asyn
 
   assert.equal(packageManifest.version, "0.1.1");
   assert.match(cargoManifest, /^version\s*=\s*"0\.1\.1"$/m);
+});
+
+test("release bump distinguishes direct manifest edits from validated lockfile edits", () => {
+  assert.deepEqual(versionFilePaths, [
+    "package.json",
+    "crates/legolas-cli/Cargo.toml",
+  ]);
+  assert.deepEqual(validatedVersionFilePaths, [
+    "package.json",
+    "crates/legolas-cli/Cargo.toml",
+    "Cargo.lock",
+  ]);
 });
 
 test("createManualBumpBranchName is deterministic per tag and base", () => {
