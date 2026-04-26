@@ -145,7 +145,7 @@ fn help_and_version_do_not_touch_invalid_discovered_config() {
     assert!(version_output.status.success());
     assert_eq!(
         support::normalize_cli_output(&stdout(&version_output)),
-        support::read_oracle("cli/version.txt")
+        support::expected_version_output()
     );
     assert_eq!(stderr(&version_output), "");
 }

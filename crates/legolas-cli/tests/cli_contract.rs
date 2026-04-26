@@ -20,7 +20,7 @@ fn prints_version_without_a_command() {
         assert!(output.status.success());
         assert_eq!(
             support::normalize_cli_output(&String::from_utf8(output.stdout).expect("stdout")),
-            support::read_oracle("cli/version.txt")
+            support::expected_version_output()
         );
         assert_eq!(String::from_utf8(output.stderr).expect("stderr"), "");
     }
