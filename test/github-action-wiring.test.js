@@ -47,6 +47,13 @@ test("manual bump workflow validates the actual bump PR head for release candida
   assert.match(workflow, /target_sha="\$CANDIDATE_SHA"/);
 });
 
+test("manual bump workflow commits validated Cargo lockfile changes", async () => {
+  const workflow = await readFile(".github/workflows/manual-release-bump.yml", "utf8");
+
+  assert.match(workflow, /validatedVersionFilePaths/);
+  assert.match(workflow, /git add package\.json crates\/legolas-cli\/Cargo\.toml Cargo\.lock/);
+});
+
 test("manual bump workflow dispatches a dispatch-enabled CI workflow", async () => {
   const ciWorkflow = await readFile(".github/workflows/ci.yml", "utf8");
   const manualBumpWorkflow = await readFile(".github/workflows/manual-release-bump.yml", "utf8");

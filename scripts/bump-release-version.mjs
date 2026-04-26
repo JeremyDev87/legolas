@@ -13,6 +13,11 @@ export const versionFilePaths = [
   "crates/legolas-cli/Cargo.toml",
 ];
 
+export const validatedVersionFilePaths = [
+  ...versionFilePaths,
+  "Cargo.lock",
+];
+
 export function normalizeReleaseTag(input) {
   return input.startsWith("v") ? input : `v${input}`;
 }
