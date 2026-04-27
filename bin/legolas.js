@@ -16,27 +16,47 @@ if (!hostSupport.supported) {
 const binaryPath = path.join(projectRoot, "vendor", hostSupport.targetTriple, hostSupport.binaryName);
 
 if (!existsSync(binaryPath)) {
+  const cargoManifestPath = path.join(projectRoot, "crates", "legolas-cli", "Cargo.toml");
+
+  if (existsSync(cargoManifestPath)) {
+    exitFromSpawnResult(spawnSourceCheckout(), "cargo");
+  }
+
   exitMissingBinary(hostSupport.hostKey);
 }
 
-const result = spawnSync(binaryPath, process.argv.slice(2), {
-  stdio: "inherit"
-});
+exitFromSpawnResult(spawnPackagedBinary(), "legolas");
 
-if (result.error) {
-  console.error(`legolas: ${result.error.message}`);
+function spawnPackagedBinary() {
+  return spawnSync(binaryPath, process.argv.slice(2), {
+    stdio: "inherit"
+  });
+}
+
+function spawnSourceCheckout() {
+  const cargoManifestPath = path.join(projectRoot, "crates", "legolas-cli", "Cargo.toml");
+
+  return spawnSync("cargo", ["run", "--manifest-path", cargoManifestPath, "--", ...process.argv.slice(2)], {
+    stdio: "inherit"
+  });
+}
+
+function exitFromSpawnResult(result, label) {
+  if (result.error) {
+    console.error(`legolas: ${label}: ${result.error.message}`);
+    process.exit(1);
+  }
+
+  if (typeof result.status === "number") {
+    process.exit(result.status);
+  }
+
+  if (result.signal) {
+    process.kill(process.pid, result.signal);
+  }
+
   process.exit(1);
 }
-
-if (typeof result.status === "number") {
-  process.exit(result.status);
-}
-
-if (result.signal) {
-  process.kill(process.pid, result.signal);
-}
-
-process.exit(1);
 
 function exitMissingBinary(hostKey) {
   console.error(missingBinaryMessage(hostKey));
