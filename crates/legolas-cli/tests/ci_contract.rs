@@ -183,7 +183,7 @@ fn ci_json_output_uses_machine_readable_gate_shape() {
             "rules": [
                 {
                     "key": "potentialKbSaved",
-                    "actual": 366,
+                    "actual": 348,
                     "warnAt": 40,
                     "failAt": 80,
                     "status": "Fail",

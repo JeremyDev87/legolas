@@ -5,8 +5,8 @@ Frameworks: Vite, React
 Package manager: pnpm
 Scanned 1 source files and 4 imported packages
 
-Potential payload reduction: ~366 KB
-Estimated LCP improvement: ~769 ms
+Potential payload reduction: ~348 KB
+Estimated LCP improvement: ~731 ms
 High impact: the project has clear opportunities to reduce initial payload size.
 
 Heaviest known dependencies:

@@ -68,10 +68,21 @@ pub struct DuplicatePackage {
     pub versions: Vec<String>,
     pub count: usize,
     pub estimated_extra_kb: usize,
+    #[serde(default)]
+    pub impact_scope: DuplicateImpactScope,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub origins: Vec<DuplicateOrigin>,
     #[serde(flatten, default, skip_serializing_if = "FindingMetadata::is_empty")]
     pub finding: FindingMetadata,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum DuplicateImpactScope {
+    ProductionLikely,
+    DevOnly,
+    #[default]
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -121,6 +132,44 @@ pub struct Impact {
     pub estimated_lcp_improvement_ms: usize,
     pub confidence: String,
     pub summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSummary {
+    pub verdict_key: String,
+    pub text_source: ReportSummaryTextSource,
+    pub confirmed_initial_payload_kb_saved: usize,
+    pub directional_opportunity_kb: usize,
+    pub estimated_lcp_improvement_ms: usize,
+    pub top_actions: Vec<ReportSummaryAction>,
+    pub group_summaries: Vec<ReportSummaryGroupSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSummaryTextSource {
+    pub title_key: String,
+    pub body_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSummaryAction {
+    pub action_priority: usize,
+    pub finding_id: String,
+    pub estimated_savings_kb: usize,
+    pub confidence: crate::FindingConfidence,
+    pub difficulty: ActionDifficulty,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSummaryGroupSummary {
+    pub key: String,
+    pub finding_count: usize,
+    pub confirmed_initial_payload_kb_saved: usize,
+    pub directional_opportunity_kb: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

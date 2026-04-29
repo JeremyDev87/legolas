@@ -124,6 +124,7 @@
       ],
       "count": 2,
       "estimatedExtraKb": 18,
+      "impactScope": "unknown",
       "origins": [
         {
           "version": "4.17.20",
@@ -280,8 +281,8 @@
   "unusedDependencyCandidates": [],
   "warnings": [],
   "impact": {
-    "potentialKbSaved": 366,
-    "estimatedLcpImprovementMs": 769,
+    "potentialKbSaved": 348,
+    "estimatedLcpImprovementMs": 731,
     "confidence": "directional",
     "summary": "High impact: the project has clear opportunities to reduce initial payload size."
   },

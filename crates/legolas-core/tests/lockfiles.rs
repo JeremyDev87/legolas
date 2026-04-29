@@ -4,7 +4,7 @@ use std::{fs, process::Command};
 
 use legolas_core::{
     lockfiles::{parse_duplicate_packages, DuplicateAnalysis},
-    DuplicateOrigin, DuplicatePackage,
+    DuplicateImpactScope, DuplicateOrigin, DuplicatePackage,
 };
 use serde_json::json;
 use tempfile::tempdir;
@@ -22,6 +22,7 @@ fn parses_npm_v3_duplicates_from_the_packages_section() {
                 duplicate_with_origins(
                     "@scope/pkg",
                     &["1.0.0", "1.2.0"],
+                    DuplicateImpactScope::ProductionLikely,
                     &[
                         origin("1.0.0", "@scope/pkg", &["@scope/pkg"]),
                         origin("1.2.0", "bar", &["bar"]),
@@ -30,6 +31,7 @@ fn parses_npm_v3_duplicates_from_the_packages_section() {
                 duplicate_with_origins(
                     "lodash",
                     &["4.17.20", "4.17.21"],
+                    DuplicateImpactScope::ProductionLikely,
                     &[
                         origin("4.17.20", "lodash", &["lodash"]),
                         origin("4.17.21", "foo", &["foo"]),
@@ -91,6 +93,7 @@ fn parses_npm_v1_duplicates_from_dependency_trees_and_sorts_versions_naturally()
                 duplicate_with_origins(
                     "shared",
                     &["1.2.0", "1.2.2", "1.2.10"],
+                    DuplicateImpactScope::Unknown,
                     &[
                         origin("1.2.0", "shared", &["shared"]),
                         origin("1.2.2", "beta", &["beta"]),
@@ -100,6 +103,7 @@ fn parses_npm_v1_duplicates_from_dependency_trees_and_sorts_versions_naturally()
                 duplicate_with_origins(
                     "left-pad",
                     &["1.0.0", "1.0.1"],
+                    DuplicateImpactScope::Unknown,
                     &[
                         origin("1.0.0", "left-pad", &["left-pad"]),
                         origin("1.0.1", "alpha", &["alpha"]),
@@ -123,6 +127,7 @@ fn parses_pnpm_duplicates_from_packages_and_snapshots_sections() {
             duplicates: vec![duplicate_with_origins(
                 "lodash",
                 &["4.17.20", "4.17.21"],
+                DuplicateImpactScope::Unknown,
                 &[
                     origin("4.17.20", "lodash", &["lodash"]),
                     origin("4.17.21", "lodash", &["lodash"]),
@@ -145,6 +150,7 @@ fn parses_yarn_berry_entries_with_version_colons() {
             duplicates: vec![duplicate_with_origins(
                 "lodash",
                 &["4.17.20", "4.17.21"],
+                DuplicateImpactScope::Unknown,
                 &[
                     origin("4.17.20", "lodash", &["lodash"]),
                     origin("4.17.21", "lodash", &["lodash"]),
@@ -167,6 +173,7 @@ fn parses_yarn_aliases_as_the_underlying_package_name() {
             duplicates: vec![duplicate_with_origins(
                 "react",
                 &["18.2.0", "18.3.1"],
+                DuplicateImpactScope::Unknown,
                 &[
                     origin("18.2.0", "react", &["react"]),
                     origin("18.3.1", "react", &["react"]),
@@ -201,6 +208,7 @@ lodash@npm:^4.17.21:
             duplicates: vec![duplicate_with_origins(
                 "lodash",
                 &["4.17.20", "4.17.21"],
+                DuplicateImpactScope::Unknown,
                 &[
                     origin("4.17.20", "lodash", &["lodash"]),
                     origin("4.17.21", "lodash", &["lodash"]),
@@ -237,6 +245,7 @@ fn parses_yarn_entries_with_leading_slashes_like_berry_exports() {
             duplicates: vec![duplicate_with_origins(
                 "lodash",
                 &["4.17.20", "4.17.21"],
+                DuplicateImpactScope::Unknown,
                 &[
                     origin("4.17.20", "lodash", &["lodash"]),
                     origin("4.17.21", "lodash", &["lodash"]),
@@ -390,6 +399,7 @@ fn sorts_versions_like_js_locale_compare_numeric() {
             versions: expected_versions,
             count: input_versions.len(),
             estimated_extra_kb: 162,
+            impact_scope: DuplicateImpactScope::ProductionLikely,
             origins: input_versions
                 .iter()
                 .enumerate()
@@ -420,6 +430,7 @@ fn prefers_the_package_manager_lockfile_and_warns_about_the_rest() {
             duplicates: vec![duplicate_with_origins(
                 "kleur",
                 &["4.1.4", "4.1.5"],
+                DuplicateImpactScope::Unknown,
                 &[
                     origin("4.1.4", "kleur", &["kleur"]),
                     origin("4.1.5", "kleur", &["kleur"]),
@@ -444,6 +455,7 @@ fn falls_back_to_default_lockfile_priority_when_package_manager_is_unknown() {
             duplicates: vec![duplicate_with_origins(
                 "left-pad",
                 &["1.0.0", "1.1.0"],
+                DuplicateImpactScope::ProductionLikely,
                 &[
                     origin("1.0.0", "left-pad", &["left-pad"]),
                     origin("1.1.0", "tooling", &["tooling"]),
@@ -465,9 +477,81 @@ fn returns_empty_results_when_no_supported_lockfile_exists() {
     assert_eq!(analysis, DuplicateAnalysis::default());
 }
 
+#[test]
+fn classifies_npm_v3_duplicates_as_dev_only_when_all_origins_are_dev() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let package_lock_path = temp_dir.path().join("package-lock.json");
+
+    fs::write(
+        &package_lock_path,
+        r#"{
+  "name": "npm-v3-dev-only",
+  "lockfileVersion": 3,
+  "packages": {
+    "node_modules/tool-a/node_modules/shared": {
+      "version": "1.0.0",
+      "dev": true
+    },
+    "node_modules/tool-b/node_modules/shared": {
+      "version": "2.0.0",
+      "dev": true
+    }
+  }
+}"#,
+    )
+    .expect("write package lockfile");
+
+    let analysis = parse_duplicate_packages(temp_dir.path(), "npm").expect("parse npm v3");
+
+    assert_eq!(
+        analysis.duplicates[0].impact_scope,
+        DuplicateImpactScope::DevOnly
+    );
+    assert_eq!(
+        serde_json::to_value(&analysis.duplicates[0]).expect("serialize duplicate")["impactScope"],
+        json!("dev-only")
+    );
+}
+
+#[test]
+fn classifies_npm_v3_duplicates_as_production_likely_when_any_origin_is_not_dev() {
+    let temp_dir = tempdir().expect("create temp dir");
+    let package_lock_path = temp_dir.path().join("package-lock.json");
+
+    fs::write(
+        &package_lock_path,
+        r#"{
+  "name": "npm-v3-production-origin",
+  "lockfileVersion": 3,
+  "packages": {
+    "node_modules/tool-a/node_modules/shared": {
+      "version": "1.0.0",
+      "dev": true
+    },
+    "node_modules/shared": {
+      "version": "2.0.0"
+    }
+  }
+}"#,
+    )
+    .expect("write package lockfile");
+
+    let analysis = parse_duplicate_packages(temp_dir.path(), "npm").expect("parse npm v3");
+
+    assert_eq!(
+        analysis.duplicates[0].impact_scope,
+        DuplicateImpactScope::ProductionLikely
+    );
+    assert_eq!(
+        serde_json::to_value(&analysis.duplicates[0]).expect("serialize duplicate")["impactScope"],
+        json!("production-likely")
+    );
+}
+
 fn duplicate_with_origins(
     name: &str,
     versions: &[&str],
+    impact_scope: DuplicateImpactScope,
     origins: &[DuplicateOrigin],
 ) -> DuplicatePackage {
     DuplicatePackage {
@@ -475,6 +559,7 @@ fn duplicate_with_origins(
         versions: versions.iter().map(|value| (*value).to_string()).collect(),
         count: versions.len(),
         estimated_extra_kb: usize::max((versions.len().saturating_sub(1)) * 18, 18),
+        impact_scope,
         origins: origins.to_vec(),
         finding: Default::default(),
     }

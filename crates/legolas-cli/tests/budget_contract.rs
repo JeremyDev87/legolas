@@ -116,7 +116,7 @@ Legolas budget for basic-parity-app
 Overall status: Fail
 
 Rule results:
-- potentialKbSaved: Fail (actual: 366, warnAt: 40, failAt: 80)
+- potentialKbSaved: Fail (actual: 348, warnAt: 40, failAt: 80)
 - duplicatePackageCount: Pass (actual: 1, warnAt: 2, failAt: 4)
 - dynamicImportCount: Fail (actual: 0, warnAt: 1, failAt: 0)
 "
@@ -138,7 +138,7 @@ fn budget_json_output_has_a_stable_shape() {
             "rules": [
                 {
                     "key": "potentialKbSaved",
-                    "actual": 366,
+                    "actual": 348,
                     "warnAt": 40,
                     "failAt": 80,
                     "status": "Fail",
@@ -216,7 +216,7 @@ fn budget_uses_config_threshold_overrides_and_starter_fallbacks_together() {
             "rules": [
                 {
                     "key": "potentialKbSaved",
-                    "actual": 366,
+                    "actual": 348,
                     "warnAt": 400,
                     "failAt": 500,
                     "status": "Pass",
@@ -283,7 +283,7 @@ fn budget_uses_discovered_config_from_project_root() {
             "rules": [
                 {
                     "key": "potentialKbSaved",
-                    "actual": 366,
+                    "actual": 348,
                     "warnAt": 40,
                     "failAt": 80,
                     "status": "Fail",

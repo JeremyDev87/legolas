@@ -1,5 +1,6 @@
 use crate::models::{
-    DuplicatePackage, HeavyDependency, Impact, LazyLoadCandidate, TreeShakingWarning,
+    DuplicateImpactScope, DuplicatePackage, HeavyDependency, Impact, LazyLoadCandidate,
+    TreeShakingWarning,
 };
 
 pub fn estimate_impact(
@@ -15,6 +16,7 @@ pub fn estimate_impact(
         .sum();
     let duplicate_kb: usize = duplicate_packages
         .iter()
+        .filter(|item| item.impact_scope == DuplicateImpactScope::ProductionLikely)
         .map(|item| item.estimated_extra_kb)
         .sum();
     let lazy_kb: usize = lazy_load_candidates

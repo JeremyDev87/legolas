@@ -16,6 +16,7 @@ pub mod lockfiles;
 pub mod models;
 pub mod package_intelligence;
 pub mod project_shape;
+pub mod report_summary;
 pub mod route_context;
 pub mod workspace;
 pub mod workspaces;
