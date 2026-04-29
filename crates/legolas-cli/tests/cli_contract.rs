@@ -183,9 +183,13 @@ fn monorepo_scan_outputs_workspace_summaries_in_text_and_json() {
         .expect("run monorepo scan");
     assert!(text_output.status.success());
     let text_stdout = String::from_utf8(text_output.stdout).expect("stdout");
-    assert!(text_stdout.contains("Workspace summaries:"));
-    assert!(text_stdout.contains("admin-app (apps/admin): 3 imported packages, 2 heavy dependencies, 0 duplicate packages, ~42 KB potential saved"));
-    assert!(text_stdout.contains("storefront-app (apps/storefront): 2 imported packages, 1 heavy dependencies, 0 duplicate packages, ~13 KB potential saved"));
+    assert!(text_stdout.contains("워크스페이스 요약:"));
+    assert!(text_stdout.contains(
+        "admin-app (apps/admin): import 패키지 3개, 무거운 의존성 2개, 중복 패키지 0개, 약 42 KB 정리 여지"
+    ));
+    assert!(text_stdout.contains(
+        "storefront-app (apps/storefront): import 패키지 2개, 무거운 의존성 1개, 중복 패키지 0개, 약 13 KB 정리 여지"
+    ));
     assert_eq!(String::from_utf8(text_output.stderr).expect("stderr"), "");
 
     let json_output = Command::cargo_bin("legolas-cli")

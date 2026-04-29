@@ -118,9 +118,9 @@ fn ci_fail_returns_exit_code_one_and_fixed_failure_prefix() {
         "\
 Legolas CI for basic-parity-app
 
-Gate result: FAIL
-Overall status: Fail
-Rule statuses: potentialKbSaved=Fail, duplicatePackageCount=Pass, dynamicImportCount=Fail
+게이트 결과: FAIL
+전체 상태: Fail
+규칙 상태: potentialKbSaved=Fail, duplicatePackageCount=Pass, dynamicImportCount=Fail
 "
     );
     assert_eq!(
@@ -140,9 +140,9 @@ fn ci_warn_keeps_exit_code_zero() {
         "\
 Legolas CI for ci-warn-app
 
-Gate result: WARN
-Overall status: Warn
-Rule statuses: potentialKbSaved=Pass, duplicatePackageCount=Pass, dynamicImportCount=Warn
+게이트 결과: WARN
+전체 상태: Warn
+규칙 상태: potentialKbSaved=Pass, duplicatePackageCount=Pass, dynamicImportCount=Warn
 "
     );
     assert_eq!(stderr(&output), "");
@@ -159,9 +159,9 @@ fn ci_pass_keeps_exit_code_zero() {
         "\
 Legolas CI for ci-pass-app
 
-Gate result: PASS
-Overall status: Pass
-Rule statuses: potentialKbSaved=Pass, duplicatePackageCount=Pass, dynamicImportCount=Pass
+게이트 결과: PASS
+전체 상태: Pass
+규칙 상태: potentialKbSaved=Pass, duplicatePackageCount=Pass, dynamicImportCount=Pass
 "
     );
     assert_eq!(stderr(&output), "");
@@ -348,9 +348,9 @@ fn ci_suppresses_config_warnings_to_keep_failure_prefix_stable() {
         "\
 Legolas CI for basic-parity-app
 
-Gate result: FAIL
-Overall status: Fail
-Rule statuses: potentialKbSaved=Fail, duplicatePackageCount=Pass, dynamicImportCount=Fail
+게이트 결과: FAIL
+전체 상태: Fail
+규칙 상태: potentialKbSaved=Fail, duplicatePackageCount=Pass, dynamicImportCount=Fail
 "
     );
     assert_eq!(
@@ -366,9 +366,13 @@ fn ci_text_output_includes_workspace_summaries_for_monorepos() {
 
     assert!(!output.status.success());
     let stdout = stdout(&output);
-    assert!(stdout.contains("Workspace summaries:"));
-    assert!(stdout.contains("admin-app (apps/admin): 3 imported packages, 2 heavy dependencies, 0 duplicate packages, ~42 KB potential saved"));
-    assert!(stdout.contains("storefront-app (apps/storefront): 2 imported packages, 1 heavy dependencies, 0 duplicate packages, ~13 KB potential saved"));
+    assert!(stdout.contains("워크스페이스 요약:"));
+    assert!(stdout.contains(
+        "admin-app (apps/admin): import 패키지 3개, 무거운 의존성 2개, 중복 패키지 0개, 약 42 KB 정리 여지"
+    ));
+    assert!(stdout.contains(
+        "storefront-app (apps/storefront): import 패키지 2개, 무거운 의존성 1개, 중복 패키지 0개, 약 13 KB 정리 여지"
+    ));
 }
 
 fn dynamic_import_project(name: &str, dynamic_imports: usize) -> TempDir {

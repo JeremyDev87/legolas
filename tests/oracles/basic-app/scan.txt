@@ -1,40 +1,59 @@
 Legolas scan for basic-parity-app
-Project root: <PROJECT_ROOT>
-Mode: heuristic
-Frameworks: Vite, React
-Package manager: pnpm
-Scanned 1 source files and 4 imported packages
+프로젝트 루트: <PROJECT_ROOT>
+모드: heuristic
+프레임워크: Vite, React
+패키지 매니저: pnpm
+스캔: 소스 파일 1개, import 패키지 4개
 
-Potential payload reduction: ~348 KB
-Estimated LCP improvement: ~731 ms
-High impact: the project has clear opportunities to reduce initial payload size.
+판정: 큰 폭 절감 가능
+확정 초기 페이로드 절감: 약 348 KB (LCP 약 731 ms 개선 추정)
+방향성 정리 여지: 약 366 KB
 
-Heaviest known dependencies:
-- chart.js (160 KB) [high confidence]: Charting code is often only needed on a subset of screens. imported in 1 file(s).
+Top next actions:
+1. chart.js 초기 번들 무게 검토 [난이도: 어려움 | 신뢰도: 높음 | ~160 KB]
+   권장 수정: lazy-load - Register only the chart primitives you use and lazy load dashboard surfaces.
+   대상: src/Dashboard.tsx
+   evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
+2. chart.js 지연 로딩 [난이도: 보통 | 신뢰도: 낮음 | ~120 KB]
+   evidence: src/Dashboard.tsx | specifier: chart.js | route-like UI surface matched `dashboard` keyword
+3. react-icons 초기 번들 무게 검토 [난이도: 어려움 | 신뢰도: 높음 | ~90 KB]
+   권장 수정: narrow-import - Import narrowly from specific icon files or migrate to a more tree-shakable icon set.
+   대상: src/Dashboard.tsx
+   evidence: src/Dashboard.tsx | specifier: react-icons | static import; Wide icon-pack imports can defeat tree shaking.
+4. lodash 초기 번들 무게 검토 [난이도: 어려움 | 신뢰도: 높음 | ~72 KB]
+   권장 수정: narrow-import - Use per-method imports or switch to lodash-es when the toolchain supports it.
+   대상: src/Dashboard.tsx
+   대체 후보: lodash-es
+   evidence: src/Dashboard.tsx | specifier: lodash | static import; Root lodash imports are a classic source of tree-shaking misses.
+5. react-icons 지연 로딩 [난이도: 보통 | 신뢰도: 낮음 | ~68 KB]
+   evidence: src/Dashboard.tsx | specifier: react-icons | route-like UI surface matched `dashboard` keyword
+
+가장 무거운 의존성:
+- chart.js (160 KB) [높음 신뢰도]: Charting code is often only needed on a subset of screens. 1개 파일에서 import됨.
   evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
-- react-icons (90 KB) [high confidence]: Wide icon-pack imports can defeat tree shaking. imported in 1 file(s).
+- react-icons (90 KB) [높음 신뢰도]: Wide icon-pack imports can defeat tree shaking. 1개 파일에서 import됨.
   evidence: src/Dashboard.tsx | specifier: react-icons | static import; Wide icon-pack imports can defeat tree shaking.
-- lodash (72 KB) [high confidence]: Root lodash imports are a classic source of tree-shaking misses. imported in 1 file(s).
+- lodash (72 KB) [높음 신뢰도]: Root lodash imports are a classic source of tree-shaking misses. 1개 파일에서 import됨.
   evidence: src/Dashboard.tsx | specifier: lodash | static import; Root lodash imports are a classic source of tree-shaking misses.
 
-Duplicate package versions:
-- lodash [high confidence]: 4.17.20, 4.17.21 (18 KB avoidable)
+중복 패키지 버전:
+- lodash [높음 신뢰도]: 4.17.20, 4.17.21 (18 KB 방향성 정리 여지)
   origin: 4.17.20 via lodash
   origin: 4.17.21 via lodash
 
-Lazy-load candidates:
-- chart.js [low confidence]: chart.js is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 120 KB.
+지연 로딩 후보:
+- chart.js [낮음 신뢰도]: chart.js is statically imported in UI surfaces that usually tolerate lazy loading. 지연 로딩 검토 여지 120 KB.
   evidence: src/Dashboard.tsx | specifier: chart.js | route-like UI surface matched `dashboard` keyword
-- react-icons [low confidence]: react-icons is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 68 KB.
+- react-icons [낮음 신뢰도]: react-icons is statically imported in UI surfaces that usually tolerate lazy loading. 지연 로딩 검토 여지 68 KB.
   evidence: src/Dashboard.tsx | specifier: react-icons | route-like UI surface matched `dashboard` keyword
-- lodash [low confidence]: lodash is statically imported in UI surfaces that usually tolerate lazy loading. Estimated win 54 KB.
+- lodash [낮음 신뢰도]: lodash is statically imported in UI surfaces that usually tolerate lazy loading. 지연 로딩 검토 여지 54 KB.
   evidence: src/Dashboard.tsx | specifier: lodash | route-like UI surface matched `dashboard` keyword
 
-Tree-shaking warnings:
-- lodash [high confidence]: Root lodash imports often keep more code than expected in client bundles.
+트리셰이킹 경고:
+- lodash [높음 신뢰도]: Root lodash imports often keep more code than expected in client bundles.
   evidence: src/Dashboard.tsx | specifier: lodash | root package import
-- react-icons [high confidence]: Root react-icons imports can make tree shaking unreliable.
+- react-icons [높음 신뢰도]: Root react-icons imports can make tree shaking unreliable.
   evidence: src/Dashboard.tsx | specifier: react-icons | root package import
 
-Unused dependency candidates:
-- none
+미사용 의존성 후보:
+- 없음
