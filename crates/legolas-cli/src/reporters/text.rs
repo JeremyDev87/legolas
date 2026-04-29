@@ -1,8 +1,13 @@
+use crate::argv::ReportLanguage;
 use legolas_core::{
     boundaries::BoundaryWarning, budget::BudgetEvaluation, rank_actions, ActionDifficulty,
     Analysis, FindingConfidence, FindingEvidence, FindingMetadata, RecommendedFix,
 };
 use std::collections::BTreeMap;
+
+pub fn format_scan_report_for_language(analysis: &Analysis, _language: ReportLanguage) -> String {
+    format_scan_report(analysis)
+}
 
 pub fn format_scan_report(analysis: &Analysis) -> String {
     let mut lines = Vec::new();
@@ -142,6 +147,14 @@ pub fn format_scan_report(analysis: &Analysis) -> String {
     lines.join("\n")
 }
 
+pub fn format_visualization_report_for_language(
+    analysis: &Analysis,
+    limit: usize,
+    _language: ReportLanguage,
+) -> String {
+    format_visualization_report(analysis, limit)
+}
+
 pub fn format_visualization_report(analysis: &Analysis, limit: usize) -> String {
     let mut lines = Vec::new();
     let normalized_limit = limit.max(1);
@@ -193,6 +206,14 @@ pub fn format_visualization_report(analysis: &Analysis, limit: usize) -> String 
     lines.join("\n")
 }
 
+pub fn format_optimize_report_for_language(
+    analysis: &Analysis,
+    top: usize,
+    _language: ReportLanguage,
+) -> String {
+    format_optimize_report(analysis, top)
+}
+
 pub fn format_optimize_report(analysis: &Analysis, top: usize) -> String {
     let mut lines = Vec::new();
     let actions = build_actions(analysis)
@@ -221,6 +242,14 @@ pub fn format_optimize_report(analysis: &Analysis, top: usize) -> String {
     lines.join("\n")
 }
 
+pub fn format_budget_report_for_language(
+    analysis: &Analysis,
+    evaluation: &BudgetEvaluation,
+    _language: ReportLanguage,
+) -> String {
+    format_budget_report(analysis, evaluation)
+}
+
 pub fn format_budget_report(analysis: &Analysis, evaluation: &BudgetEvaluation) -> String {
     let mut lines = Vec::new();
 
@@ -247,6 +276,14 @@ pub fn format_budget_report(analysis: &Analysis, evaluation: &BudgetEvaluation) 
     );
 
     lines.join("\n")
+}
+
+pub fn format_ci_report_for_language(
+    analysis: &Analysis,
+    evaluation: &BudgetEvaluation,
+    _language: ReportLanguage,
+) -> String {
+    format_ci_report(analysis, evaluation)
 }
 
 pub fn format_ci_report(analysis: &Analysis, evaluation: &BudgetEvaluation) -> String {
