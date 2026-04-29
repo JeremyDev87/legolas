@@ -2,8 +2,13 @@ use std::{fs, path::PathBuf};
 
 use legolas_core::{
     impact::estimate_impact,
-    models::{DuplicatePackage, HeavyDependency, Impact, LazyLoadCandidate, TreeShakingWarning},
+    models::{
+        Analysis, DuplicateImpactScope, DuplicatePackage, HeavyDependency, Impact,
+        LazyLoadCandidate, TreeShakingWarning,
+    },
     package_intelligence::{get_package_intel, package_intelligence_entries, PackageIntel},
+    report_summary::build_report_summary,
+    FindingAnalysisSource, FindingConfidence, FindingMetadata,
 };
 use serde::Deserialize;
 
@@ -143,6 +148,79 @@ fn estimate_impact_uses_the_js_summary_thresholds() {
     }
 }
 
+#[test]
+fn estimate_impact_excludes_non_production_duplicate_savings_from_initial_payload() {
+    let impact = estimate_impact(
+        &[],
+        &[
+            duplicate_package_with_scope(80, DuplicateImpactScope::ProductionLikely),
+            duplicate_package_with_scope(60, DuplicateImpactScope::DevOnly),
+            duplicate_package_with_scope(40, DuplicateImpactScope::Unknown),
+        ],
+        &[],
+        &[],
+    );
+
+    assert_eq!(impact.potential_kb_saved, 80);
+    assert_eq!(impact.estimated_lcp_improvement_ms, 168);
+    assert_eq!(impact.confidence, "directional");
+}
+
+#[test]
+fn report_summary_separates_confirmed_initial_payload_from_directional_duplicate_opportunity() {
+    let mut production_duplicate =
+        duplicate_package_with_scope(50, DuplicateImpactScope::ProductionLikely);
+    production_duplicate.finding = FindingMetadata::new(
+        "duplicate-package:prod-shared",
+        FindingAnalysisSource::LockfileTrace,
+    )
+    .with_confidence(FindingConfidence::Medium);
+
+    let mut dev_duplicate = duplicate_package_with_scope(30, DuplicateImpactScope::DevOnly);
+    dev_duplicate.finding = FindingMetadata::new(
+        "duplicate-package:dev-shared",
+        FindingAnalysisSource::LockfileTrace,
+    )
+    .with_confidence(FindingConfidence::Medium);
+
+    let analysis = Analysis {
+        duplicate_packages: vec![production_duplicate, dev_duplicate],
+        impact: Impact {
+            potential_kb_saved: 50,
+            estimated_lcp_improvement_ms: 105,
+            confidence: "directional".to_string(),
+            summary: "Targeted impact: a handful of focused optimizations should pay off."
+                .to_string(),
+        },
+        ..Analysis::default()
+    };
+
+    let summary = build_report_summary(&analysis);
+
+    assert_eq!(summary.verdict_key, "targeted-impact");
+    assert_eq!(
+        summary.text_source.title_key,
+        "report.summary.targeted-impact.title"
+    );
+    assert_eq!(summary.confirmed_initial_payload_kb_saved, 50);
+    assert_eq!(summary.directional_opportunity_kb, 80);
+    assert_eq!(summary.estimated_lcp_improvement_ms, 105);
+    assert_eq!(summary.top_actions.len(), 2);
+    assert_eq!(
+        summary.top_actions[0].finding_id,
+        "duplicate-package:prod-shared"
+    );
+    assert_eq!(
+        summary
+            .group_summaries
+            .iter()
+            .find(|group| group.key == "duplicate-packages")
+            .expect("duplicate group summary")
+            .directional_opportunity_kb,
+        80
+    );
+}
+
 fn heavy_dependency(estimated_kb: usize) -> HeavyDependency {
     HeavyDependency {
         estimated_kb,
@@ -151,8 +229,16 @@ fn heavy_dependency(estimated_kb: usize) -> HeavyDependency {
 }
 
 fn duplicate_package(estimated_extra_kb: usize) -> DuplicatePackage {
+    duplicate_package_with_scope(estimated_extra_kb, DuplicateImpactScope::ProductionLikely)
+}
+
+fn duplicate_package_with_scope(
+    estimated_extra_kb: usize,
+    impact_scope: DuplicateImpactScope,
+) -> DuplicatePackage {
     DuplicatePackage {
         estimated_extra_kb,
+        impact_scope,
         ..DuplicatePackage::default()
     }
 }

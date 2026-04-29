@@ -2,7 +2,7 @@ mod support;
 
 use legolas_core::{
     lockfiles::{parse_duplicate_packages, DuplicateAnalysis},
-    DuplicateOrigin, DuplicatePackage,
+    DuplicateImpactScope, DuplicateOrigin, DuplicatePackage,
 };
 
 #[test]
@@ -14,9 +14,10 @@ fn parses_npm_origin_traces_from_package_paths() {
     assert_eq!(
         analysis,
         DuplicateAnalysis {
-            duplicates: vec![duplicate_with_origins(
+            duplicates: vec![duplicate_with_origins_with_scope(
                 "shared-lib",
                 &["1.0.0", "2.0.0"],
+                DuplicateImpactScope::ProductionLikely,
                 &[
                     origin("1.0.0", "app-shell", &["app-shell", "widget-core"]),
                     origin("2.0.0", "admin-shell", &["admin-shell"]),
@@ -120,11 +121,21 @@ fn duplicate_with_origins(
     versions: &[&str],
     origins: &[DuplicateOrigin],
 ) -> DuplicatePackage {
+    duplicate_with_origins_with_scope(name, versions, DuplicateImpactScope::Unknown, origins)
+}
+
+fn duplicate_with_origins_with_scope(
+    name: &str,
+    versions: &[&str],
+    impact_scope: DuplicateImpactScope,
+    origins: &[DuplicateOrigin],
+) -> DuplicatePackage {
     DuplicatePackage {
         name: name.to_string(),
         versions: versions.iter().map(|value| (*value).to_string()).collect(),
         count: versions.len(),
         estimated_extra_kb: usize::max((versions.len().saturating_sub(1)) * 18, 18),
+        impact_scope,
         origins: origins.to_vec(),
         finding: Default::default(),
     }

@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 
 use crate::{
     error::Result,
-    models::{DuplicateOrigin, DuplicatePackage},
+    models::{DuplicateImpactScope, DuplicateOrigin, DuplicatePackage},
     workspace::{exists, read_json_if_exists, read_text_if_exists},
 };
 
@@ -37,11 +37,19 @@ struct Lockfile {
 
 type VersionsByName = BTreeMap<String, Vec<String>>;
 type OriginsByName = BTreeMap<String, Vec<DuplicateOrigin>>;
+type ScopeEvidenceByName = BTreeMap<String, DuplicateScopeEvidence>;
 
 #[derive(Debug, Default)]
 struct DuplicateData {
     versions_by_name: VersionsByName,
     origins_by_name: OriginsByName,
+    scope_evidence_by_name: ScopeEvidenceByName,
+}
+
+#[derive(Debug, Default)]
+struct DuplicateScopeEvidence {
+    dev_origins: usize,
+    production_origins: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,6 +217,11 @@ fn collect_from_package_lock(package_lock: Option<Value>) -> DuplicateData {
                     &mut data.origins_by_name,
                     package_name,
                     build_duplicate_origin(version, &package_chain),
+                );
+                add_scope_evidence(
+                    &mut data.scope_evidence_by_name,
+                    package_name,
+                    npm_package_scope(metadata),
                 );
             }
 
@@ -784,12 +797,18 @@ fn summarize_duplicates(mut data: DuplicateData) -> Vec<DuplicatePackage> {
                 .then_with(|| left.via_chain.cmp(&right.via_chain))
         });
         let estimated_extra_kb = usize::max((versions.len().saturating_sub(1)) * 18, 18);
+        let impact_scope = data
+            .scope_evidence_by_name
+            .remove(&name)
+            .map(|evidence| evidence.impact_scope())
+            .unwrap_or(DuplicateImpactScope::Unknown);
 
         results.push(DuplicatePackage {
             name,
             count: versions.len(),
             versions,
             estimated_extra_kb,
+            impact_scope,
             origins,
             finding: Default::default(),
         });
@@ -849,6 +868,46 @@ fn add_version(versions_by_name: &mut VersionsByName, name: &str, version: &str)
     let versions = versions_by_name.entry(name.to_string()).or_default();
     if !versions.iter().any(|existing| existing == version) {
         versions.push(version.to_string());
+    }
+}
+
+fn npm_package_scope(metadata: &Value) -> DuplicateImpactScope {
+    if metadata
+        .get("dev")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        DuplicateImpactScope::DevOnly
+    } else {
+        DuplicateImpactScope::ProductionLikely
+    }
+}
+
+fn add_scope_evidence(
+    scope_evidence_by_name: &mut ScopeEvidenceByName,
+    name: &str,
+    impact_scope: DuplicateImpactScope,
+) {
+    let evidence = scope_evidence_by_name.entry(name.to_string()).or_default();
+
+    match impact_scope {
+        DuplicateImpactScope::ProductionLikely => evidence.production_origins += 1,
+        DuplicateImpactScope::DevOnly => evidence.dev_origins += 1,
+        DuplicateImpactScope::Unknown => {}
+    }
+}
+
+impl DuplicateScopeEvidence {
+    fn impact_scope(&self) -> DuplicateImpactScope {
+        if self.production_origins > 0 {
+            return DuplicateImpactScope::ProductionLikely;
+        }
+
+        if self.dev_origins > 0 {
+            return DuplicateImpactScope::DevOnly;
+        }
+
+        DuplicateImpactScope::Unknown
     }
 }
 

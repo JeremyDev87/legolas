@@ -4,9 +4,9 @@ use legolas_cli::reporters::text::{
     format_optimize_report, format_scan_report, format_visualization_report,
 };
 use legolas_core::{
-    Analysis, DuplicateOrigin, DuplicatePackage, FindingAnalysisSource, FindingConfidence,
-    FindingEvidence, FindingMetadata, HeavyDependency, Impact, LazyLoadCandidate, Metadata,
-    PackageSummary, SourceSummary,
+    Analysis, DuplicateImpactScope, DuplicateOrigin, DuplicatePackage, FindingAnalysisSource,
+    FindingConfidence, FindingEvidence, FindingMetadata, HeavyDependency, Impact,
+    LazyLoadCandidate, Metadata, PackageSummary, SourceSummary,
 };
 
 fn load_analysis() -> Analysis {
@@ -165,6 +165,7 @@ fn scan_report_renders_all_duplicate_origin_lines() {
         ],
         count: 3,
         estimated_extra_kb: 36,
+        impact_scope: DuplicateImpactScope::Unknown,
         origins: vec![
             origin("4.17.19", "shell", &["shell", "shared"]),
             origin("4.17.20", "admin", &["admin"]),

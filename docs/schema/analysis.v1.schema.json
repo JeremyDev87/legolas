@@ -372,6 +372,14 @@
           "estimatedExtraKb": {
             "type": "integer"
           },
+          "impactScope": {
+            "type": "string",
+            "enum": [
+              "production-likely",
+              "dev-only",
+              "unknown"
+            ]
+          },
           "origins": {
             "type": "array",
             "items": {
