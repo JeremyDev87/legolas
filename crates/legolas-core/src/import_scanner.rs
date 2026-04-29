@@ -1530,6 +1530,12 @@ fn is_regex_literal_start(contents: &str, start_index: usize) -> bool {
         return false;
     }
 
+    if is_jsx_closing_tag_slash(contents, start_index)
+        || is_jsx_self_closing_tag_slash(contents, start_index)
+    {
+        return false;
+    }
+
     let Some(previous_index) = find_previous_significant_index(contents, start_index) else {
         return true;
     };
@@ -1604,19 +1610,141 @@ fn is_regex_literal_start(contents: &str, start_index: usize) -> bool {
     false
 }
 
+fn is_jsx_closing_tag_slash(contents: &str, start_index: usize) -> bool {
+    let Some((tag_start, '<')) = contents[..start_index].char_indices().next_back() else {
+        return false;
+    };
+    let Some(relative_tag_end) = contents[start_index..].find('>') else {
+        return false;
+    };
+    let tag_end = start_index + relative_tag_end;
+    let tag_text = &contents[tag_start..=tag_end];
+
+    is_likely_jsx_closing_tag(tag_text)
+        && !looks_like_less_than_followed_by_regex_body(contents, tag_start, tag_end)
+}
+
+fn is_jsx_self_closing_tag_slash(contents: &str, start_index: usize) -> bool {
+    if peek_char(contents, start_index + 1) != Some('>') {
+        return false;
+    }
+
+    find_jsx_opening_tag_start_before_self_closing_slash(contents, start_index).is_some()
+}
+
+fn find_jsx_opening_tag_start_before_self_closing_slash(
+    contents: &str,
+    start_index: usize,
+) -> Option<usize> {
+    let mut nested_expression_depth = 0usize;
+    let mut index = start_index;
+
+    while let Some((candidate_index, character)) = contents[..index].char_indices().next_back() {
+        if nested_expression_depth == 0 {
+            if character == '>' {
+                return None;
+            }
+
+            if character == '<' {
+                return is_likely_jsx_opening_tag_start(contents, candidate_index)
+                    .then_some(candidate_index);
+            }
+        }
+
+        if matches!(character, '}' | ')' | ']') {
+            nested_expression_depth += 1;
+        } else if matches!(character, '{' | '(' | '[') && nested_expression_depth > 0 {
+            nested_expression_depth -= 1;
+        }
+
+        index = candidate_index;
+    }
+
+    None
+}
+
+fn is_likely_jsx_opening_tag_start(contents: &str, start_index: usize) -> bool {
+    matches!(
+        peek_char(contents, start_index + 1),
+        Some(character) if character.is_ascii_alphabetic()
+    )
+}
+
+fn is_likely_jsx_closing_tag(tag_text: &str) -> bool {
+    if tag_text == "</>" {
+        return true;
+    }
+
+    let Some(tag_name) = tag_text
+        .strip_prefix("</")
+        .and_then(|text| text.strip_suffix('>'))
+    else {
+        return false;
+    };
+
+    is_likely_jsx_tag_name(tag_name.trim())
+}
+
+fn is_likely_jsx_tag_name(tag_name: &str) -> bool {
+    let mut characters = tag_name.chars();
+    let Some(first_character) = characters.next() else {
+        return false;
+    };
+
+    first_character.is_ascii_alphabetic()
+        && characters.all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | ':' | '.')
+        })
+}
+
+fn looks_like_less_than_followed_by_regex_body(
+    contents: &str,
+    tag_start: usize,
+    tag_end: usize,
+) -> bool {
+    let Some(previous_index) = find_previous_significant_index(contents, tag_start) else {
+        return false;
+    };
+    let Some(previous_character) = current_char(contents, previous_index) else {
+        return false;
+    };
+
+    if !is_identifier_character(previous_character) && !matches!(previous_character, ')' | ']') {
+        return false;
+    }
+
+    let next_index = skip_trivia(contents, advance_one(contents, tag_end));
+    matches!(
+        current_char(contents, next_index),
+        Some(character) if is_identifier_start(character)
+    )
+}
+
 fn regex_can_follow_parenthesized_construct(contents: &str, close_index: usize) -> bool {
+    if let Some(open_index) =
+        find_matching_open_delimiter_without_nested_lexing(contents, close_index, '(', ')')
+    {
+        return regex_can_follow_parenthesized_head(contents, open_index);
+    }
+
     let Some(open_index) = find_matching_open_delimiter(contents, close_index, '(', ')') else {
         return false;
     };
-    let head = normalize_whitespace(statement_head_segment(contents, open_index));
+    regex_can_follow_parenthesized_head(contents, open_index)
+}
 
-    head_ends_with_tokens(&head, &["if"])
-        || head_ends_with_tokens(&head, &["while"])
-        || head_ends_with_tokens(&head, &["for"])
-        || head_ends_with_tokens(&head, &["for", "await"])
-        || head_ends_with_tokens(&head, &["with"])
-        || head_ends_with_tokens(&head, &["switch"])
-        || head_ends_with_tokens(&head, &["catch"])
+fn regex_can_follow_parenthesized_head(contents: &str, open_index: usize) -> bool {
+    let Some(previous_index) = find_previous_significant_index(contents, open_index) else {
+        return false;
+    };
+    let Some((token_start, token)) = previous_identifier_span(contents, previous_index) else {
+        return false;
+    };
+
+    matches!(token, "if" | "while" | "for" | "with" | "switch" | "catch")
+        || (token == "await"
+            && previous_identifier_before(contents, token_start)
+                .is_some_and(|token| token == "for"))
 }
 
 fn regex_can_follow_braced_construct(
@@ -1668,6 +1796,40 @@ fn regex_can_follow_braced_construct(
     }
 
     matches!(before_open_character, ';' | '{' | '}')
+}
+
+fn find_matching_open_delimiter_without_nested_lexing(
+    contents: &str,
+    close_index: usize,
+    open_character: char,
+    close_character: char,
+) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut index = advance_one(contents, close_index);
+
+    while let Some((candidate_index, character)) = contents[..index].char_indices().next_back() {
+        if matches!(character, '\'' | '"' | '`' | '/') {
+            return None;
+        }
+
+        if character == close_character {
+            depth += 1;
+        } else if character == open_character {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return Some(candidate_index);
+            }
+        }
+
+        index = candidate_index;
+    }
+
+    None
+}
+
+fn previous_identifier_before(contents: &str, end_index: usize) -> Option<&str> {
+    let previous_index = find_previous_significant_index(contents, end_index)?;
+    previous_identifier_token(contents, previous_index)
 }
 
 fn has_line_terminator_between(contents: &str, start_index: usize, end_index: usize) -> bool {

@@ -741,6 +741,90 @@ fn scan_imports_preserves_dynamic_imports_after_postfix_increment_and_decrement(
 }
 
 #[test]
+fn scan_imports_ignores_jsx_tag_slashes_without_breaking_regex_literals() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        concat!(
+            "import Widget from \"widget-lib\";\n",
+            "export function View({ value }) {\n",
+            "  const exact = /abc/.test(value);\n",
+            "  const ignored = /import(\"fake-pkg\")/.test(value);\n",
+            "  return (\n",
+            "    <Widget\n",
+            "      prop={{ value }}\n",
+            "      render={<span>{exact && ignored ? value : \"fallback\"}</span>}\n",
+            "      footer={value ? <Footer label={value} /> : null}\n",
+            "    />\n",
+            "  );\n",
+            "}\n",
+            "export const load = () => import(\"chart.js/auto\");\n",
+        ),
+    );
+
+    let files = collect_source_files(root).expect("collect jsx slash regression files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis = scan_imports(root, &files).expect("scan jsx slash regression fixture");
+
+    assert_eq!(analysis.dynamic_import_count, 1);
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["chart.js", "widget-lib"]
+    );
+    assert_eq!(
+        analysis.by_package.get("widget-lib"),
+        Some(&ImportedPackageRecord {
+            name: "widget-lib".to_string(),
+            files: vec!["src/App.tsx".to_string()],
+            static_files: vec!["src/App.tsx".to_string()],
+            dynamic_files: Vec::new(),
+        })
+    );
+    assert_eq!(
+        analysis.by_package.get("chart.js"),
+        Some(&ImportedPackageRecord {
+            name: "chart.js".to_string(),
+            files: vec!["src/App.tsx".to_string()],
+            static_files: Vec::new(),
+            dynamic_files: vec!["src/App.tsx".to_string()],
+        })
+    );
+}
+
+#[test]
+fn scan_imports_preserves_regex_after_no_space_less_than_expressions() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        concat!(
+            "export const compared = left</import(\"fake-pkg\")/.test(value)>right;\n",
+            "export const tagNameBody = left</Foo>import(\"fake-pkg\")/.test(value);\n",
+            "export const load = () => import(\"chart.js/auto\");\n",
+        ),
+    );
+
+    let files = collect_source_files(root).expect("collect less-than regex regression files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis = scan_imports(root, &files).expect("scan less-than regex regression fixture");
+
+    assert_eq!(analysis.dynamic_import_count, 1);
+    assert_eq!(
+        analysis.by_package.keys().cloned().collect::<Vec<_>>(),
+        vec!["chart.js"]
+    );
+}
+
+#[test]
 fn scan_imports_emits_tree_shaking_warnings_for_export_from_root_packages() {
     let temp = tempdir().expect("create temp dir");
     let root = temp.path();
