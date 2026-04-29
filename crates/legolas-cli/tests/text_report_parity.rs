@@ -1,12 +1,15 @@
 mod support;
 
+use legolas_cli::argv::ReportLanguage;
 use legolas_cli::reporters::text::{
-    format_optimize_report, format_scan_report, format_visualization_report,
+    format_budget_report_for_language, format_optimize_report, format_optimize_report_for_language,
+    format_scan_report, format_scan_report_for_language, format_visualization_report,
+    format_visualization_report_for_language,
 };
 use legolas_core::{
-    Analysis, DuplicateImpactScope, DuplicateOrigin, DuplicatePackage, FindingAnalysisSource,
-    FindingConfidence, FindingEvidence, FindingMetadata, HeavyDependency, Impact,
-    LazyLoadCandidate, Metadata, PackageSummary, SourceSummary,
+    budget::evaluate_budget, Analysis, DuplicateImpactScope, DuplicateOrigin, DuplicatePackage,
+    FindingAnalysisSource, FindingConfidence, FindingEvidence, FindingMetadata, HeavyDependency,
+    Impact, LazyLoadCandidate, Metadata, PackageSummary, SourceSummary,
 };
 
 fn load_analysis() -> Analysis {
@@ -21,14 +24,47 @@ fn assert_report_matches_oracle(actual: String, oracle: &str) {
 fn matches_scan_visualize_and_optimize_oracles() {
     let analysis = load_analysis();
 
-    assert_report_matches_oracle(format_scan_report(&analysis), "basic-app/scan.txt");
     assert_report_matches_oracle(
-        format_visualization_report(&analysis, 10),
+        format_scan_report_for_language(&analysis, ReportLanguage::Ko),
+        "basic-app/scan.txt",
+    );
+    assert_report_matches_oracle(
+        format_visualization_report_for_language(&analysis, 10, ReportLanguage::Ko),
         "basic-app/visualize.txt",
     );
     assert_report_matches_oracle(
-        format_optimize_report(&analysis, 5),
+        format_optimize_report_for_language(&analysis, 5, ReportLanguage::Ko),
         "basic-app/optimize.txt",
+    );
+    assert_report_matches_oracle(
+        format_budget_report_for_language(
+            &analysis,
+            &evaluate_budget(&analysis, None),
+            ReportLanguage::Ko,
+        ),
+        "basic-app/budget.txt",
+    );
+}
+
+#[test]
+fn english_language_wrappers_keep_existing_output() {
+    let analysis = load_analysis();
+    let scan = format_scan_report_for_language(&analysis, ReportLanguage::En);
+
+    assert_eq!(scan, format_scan_report(&analysis));
+    assert!(scan.contains("Verdict: high impact"));
+    assert!(scan.contains(
+        "Confirmed initial payload savings: ~348 KB (estimated LCP improvement ~731 ms)"
+    ));
+    assert!(scan.contains("Directional cleanup opportunity: ~366 KB"));
+    assert!(scan.contains("Top next actions:"));
+    assert_eq!(
+        format_visualization_report_for_language(&analysis, 10, ReportLanguage::En),
+        format_visualization_report(&analysis, 10)
+    );
+    assert_eq!(
+        format_optimize_report_for_language(&analysis, 5, ReportLanguage::En),
+        format_optimize_report(&analysis, 5)
     );
 }
 
@@ -178,7 +214,8 @@ fn scan_report_renders_all_duplicate_origin_lines() {
     }];
 
     let scan = format_scan_report(&analysis);
-    assert!(scan.contains("- lodash: 4.17.19, 4.17.20, 4.17.21 (36 KB avoidable)"));
+    assert!(scan
+        .contains("- lodash: 4.17.19, 4.17.20, 4.17.21 (36 KB directional cleanup opportunity)"));
     assert!(scan.contains("  origin: 4.17.19 via shell -> shared"));
     assert!(scan.contains("  origin: 4.17.20 via admin"));
     assert!(scan.contains("  origin: 4.17.21 via docs -> shared"));
@@ -264,9 +301,12 @@ fn scan_report_covers_empty_section_fallbacks() {
             "Package manager: npm\n",
             "Scanned 0 source files and 0 imported packages\n",
             "\n",
-            "Potential payload reduction: ~0 KB\n",
-            "Estimated LCP improvement: ~0 ms\n",
-            "Low impact: obvious bundle issues are limited in the current scan.\n",
+            "Verdict: limited confirmed impact\n",
+            "Confirmed initial payload savings: not confirmed (duplicate dependency pressure alone does not confirm initial payload or LCP savings)\n",
+            "Directional cleanup opportunity: ~0 KB\n",
+            "\n",
+            "Top next actions:\n",
+            "1. No high-confidence optimization candidates were found.\n",
             "\n",
             "Heaviest known dependencies:\n",
             "- none\n",
@@ -284,6 +324,110 @@ fn scan_report_covers_empty_section_fallbacks() {
             "- none"
         )
     );
+}
+
+#[test]
+fn korean_scan_report_does_not_confirm_lcp_savings_for_duplicate_only_pressure() {
+    let mut analysis = base_analysis("duplicate-only-app");
+    analysis.duplicate_packages = vec![DuplicatePackage {
+        name: "vitest".to_string(),
+        versions: vec!["1.6.0".to_string(), "2.0.0".to_string()],
+        count: 2,
+        estimated_extra_kb: 48,
+        impact_scope: DuplicateImpactScope::Unknown,
+        finding: FindingMetadata::new(
+            "duplicate-package:vitest",
+            FindingAnalysisSource::LockfileTrace,
+        )
+        .with_confidence(FindingConfidence::Medium),
+        ..DuplicatePackage::default()
+    }];
+
+    let report = format_scan_report_for_language(&analysis, ReportLanguage::Ko);
+
+    assert!(report.contains("판정:"));
+    assert!(report.contains("확정 초기 페이로드 절감: 미확정"));
+    assert!(!report.contains("LCP 약"));
+    assert!(report.contains("방향성 정리 여지: 약 48 KB"));
+    assert!(report.contains("Top next actions:"));
+}
+
+#[test]
+fn korean_scan_report_renders_dev_only_duplicates_as_dependency_hygiene() {
+    let mut analysis = base_analysis("dev-duplicate-app");
+    analysis.duplicate_packages = vec![DuplicatePackage {
+        name: "vitest".to_string(),
+        versions: vec!["1.6.0".to_string(), "2.0.0".to_string()],
+        count: 2,
+        estimated_extra_kb: 48,
+        impact_scope: DuplicateImpactScope::DevOnly,
+        finding: FindingMetadata::new(
+            "duplicate-package:vitest",
+            FindingAnalysisSource::LockfileTrace,
+        )
+        .with_confidence(FindingConfidence::Medium),
+        ..DuplicatePackage::default()
+    }];
+
+    let report = format_scan_report_for_language(&analysis, ReportLanguage::Ko);
+
+    assert!(report.contains("vitest 개발/테스트 의존성 중복 정리"));
+    assert!(report.contains("개발/테스트 의존성 중복 정리"));
+    assert!(report.contains("dependency hygiene"));
+    assert!(report.contains("확정 초기 페이로드 절감: 미확정"));
+}
+
+#[test]
+fn english_scan_report_renders_dev_only_duplicates_as_dependency_hygiene() {
+    let mut analysis = base_analysis("dev-duplicate-app");
+    analysis.duplicate_packages = vec![DuplicatePackage {
+        name: "vitest".to_string(),
+        versions: vec!["1.6.0".to_string(), "2.0.0".to_string()],
+        count: 2,
+        estimated_extra_kb: 48,
+        impact_scope: DuplicateImpactScope::DevOnly,
+        finding: FindingMetadata::new(
+            "duplicate-package:vitest",
+            FindingAnalysisSource::LockfileTrace,
+        )
+        .with_confidence(FindingConfidence::Medium),
+        ..DuplicatePackage::default()
+    }];
+
+    let report = format_scan_report_for_language(&analysis, ReportLanguage::En);
+
+    assert!(report.contains("development/test dependency duplication"));
+    assert!(report.contains("dependency hygiene"));
+    assert!(!report.contains("48 KB avoidable"));
+    assert!(report.contains("Confirmed initial payload savings: not confirmed"));
+}
+
+#[test]
+fn scan_report_confirms_production_likely_duplicate_savings_without_other_findings() {
+    let mut analysis = base_analysis("production-duplicate-app");
+    analysis.duplicate_packages = vec![DuplicatePackage {
+        name: "lodash".to_string(),
+        versions: vec!["4.17.20".to_string(), "4.17.21".to_string()],
+        count: 2,
+        estimated_extra_kb: 48,
+        impact_scope: DuplicateImpactScope::ProductionLikely,
+        finding: FindingMetadata::new(
+            "duplicate-package:lodash",
+            FindingAnalysisSource::LockfileTrace,
+        )
+        .with_confidence(FindingConfidence::High),
+        ..DuplicatePackage::default()
+    }];
+
+    let ko_report = format_scan_report_for_language(&analysis, ReportLanguage::Ko);
+    let en_report = format_scan_report_for_language(&analysis, ReportLanguage::En);
+
+    assert!(ko_report.contains("확정 초기 페이로드 절감: 약 48 KB"));
+    assert!(!ko_report.contains("확정 초기 페이로드 절감: 미확정"));
+    assert!(ko_report.contains("초기 페이로드 절감 후보"));
+    assert!(en_report.contains("Confirmed initial payload savings: ~48 KB"));
+    assert!(!en_report.contains("Confirmed initial payload savings: not confirmed"));
+    assert!(en_report.contains("initial payload candidate"));
 }
 
 #[test]

@@ -1,8 +1,8 @@
 Legolas budget for basic-parity-app
 
-Overall status: Fail
+전체 상태: Fail
 
-Rule results:
+규칙 결과:
 - potentialKbSaved: Fail (actual: 348, warnAt: 40, failAt: 80)
 - duplicatePackageCount: Pass (actual: 1, warnAt: 2, failAt: 4)
 - dynamicImportCount: Fail (actual: 0, warnAt: 1, failAt: 0)

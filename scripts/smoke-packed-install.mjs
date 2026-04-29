@@ -68,7 +68,7 @@ if (!scan.stdout.includes("Legolas scan for basic-parity-app")) {
   throw new Error(`installed legolas scan did not report the basic fixture:\n${scan.stdout}`);
 }
 
-if (!scan.stdout.includes("Scanned 1 source files")) {
+if (!scan.stdout.includes("스캔: 소스 파일 1개")) {
   throw new Error(`installed legolas scan did not report the expected source count:\n${scan.stdout}`);
 }
 

@@ -179,7 +179,7 @@ fn regression_only_scan_text_only_mentions_new_findings() {
     assert!(stdout.contains("Legolas scan for baseline-app"));
     assert!(stdout.contains("- chart.js"));
     assert!(stdout.contains("- lodash"));
-    assert!(stdout.contains("Tree-shaking warnings:"));
+    assert!(stdout.contains("트리셰이킹 경고:"));
     assert!(stdout
         .contains("Root lodash imports often keep more code than expected in client bundles."));
 }

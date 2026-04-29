@@ -1,21 +1,22 @@
 Legolas optimize for basic-parity-app
 
-1. Review chart.js upfront bundle weight [hard | high confidence | ~160 KB]
-   recommended fix: lazy-load - Register only the chart primitives you use and lazy load dashboard surfaces.
-   targets: src/Dashboard.tsx
+Top next actions:
+1. chart.js 초기 번들 무게 검토 [난이도: 어려움 | 신뢰도: 높음 | ~160 KB]
+   권장 수정: lazy-load - Register only the chart primitives you use and lazy load dashboard surfaces.
+   대상: src/Dashboard.tsx
    evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
-2. Lazy load chart.js [medium | low confidence | ~120 KB]
+2. chart.js 지연 로딩 [난이도: 보통 | 신뢰도: 낮음 | ~120 KB]
    evidence: src/Dashboard.tsx | specifier: chart.js | route-like UI surface matched `dashboard` keyword
-3. Review react-icons upfront bundle weight [hard | high confidence | ~90 KB]
-   recommended fix: narrow-import - Import narrowly from specific icon files or migrate to a more tree-shakable icon set.
-   targets: src/Dashboard.tsx
+3. react-icons 초기 번들 무게 검토 [난이도: 어려움 | 신뢰도: 높음 | ~90 KB]
+   권장 수정: narrow-import - Import narrowly from specific icon files or migrate to a more tree-shakable icon set.
+   대상: src/Dashboard.tsx
    evidence: src/Dashboard.tsx | specifier: react-icons | static import; Wide icon-pack imports can defeat tree shaking.
-4. Review lodash upfront bundle weight [hard | high confidence | ~72 KB]
-   recommended fix: narrow-import - Use per-method imports or switch to lodash-es when the toolchain supports it.
-   targets: src/Dashboard.tsx
-   replacement: lodash-es
+4. lodash 초기 번들 무게 검토 [난이도: 어려움 | 신뢰도: 높음 | ~72 KB]
+   권장 수정: narrow-import - Use per-method imports or switch to lodash-es when the toolchain supports it.
+   대상: src/Dashboard.tsx
+   대체 후보: lodash-es
    evidence: src/Dashboard.tsx | specifier: lodash | static import; Root lodash imports are a classic source of tree-shaking misses.
-5. Lazy load react-icons [medium | low confidence | ~68 KB]
+5. react-icons 지연 로딩 [난이도: 보통 | 신뢰도: 낮음 | ~68 KB]
    evidence: src/Dashboard.tsx | specifier: react-icons | route-like UI surface matched `dashboard` keyword
 
-Projected savings: ~348 KB, with directional confidence.
+예상 정리 여지: 약 348 KB, 신뢰도 directional.

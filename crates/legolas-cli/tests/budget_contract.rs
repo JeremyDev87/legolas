@@ -113,9 +113,9 @@ fn budget_text_output_uses_built_in_starter_thresholds() {
         "\
 Legolas budget for basic-parity-app
 
-Overall status: Fail
+전체 상태: Fail
 
-Rule results:
+규칙 결과:
 - potentialKbSaved: Fail (actual: 348, warnAt: 40, failAt: 80)
 - duplicatePackageCount: Pass (actual: 1, warnAt: 2, failAt: 4)
 - dynamicImportCount: Fail (actual: 0, warnAt: 1, failAt: 0)
@@ -318,9 +318,13 @@ fn budget_text_output_includes_workspace_summaries_for_monorepos() {
 
     assert!(output.status.success());
     let stdout = stdout(&output);
-    assert!(stdout.contains("Workspace summaries:"));
-    assert!(stdout.contains("admin-app (apps/admin): 3 imported packages, 2 heavy dependencies, 0 duplicate packages, ~42 KB potential saved"));
-    assert!(stdout.contains("storefront-app (apps/storefront): 2 imported packages, 1 heavy dependencies, 0 duplicate packages, ~13 KB potential saved"));
+    assert!(stdout.contains("워크스페이스 요약:"));
+    assert!(stdout.contains(
+        "admin-app (apps/admin): import 패키지 3개, 무거운 의존성 2개, 중복 패키지 0개, 약 42 KB 정리 여지"
+    ));
+    assert!(stdout.contains(
+        "storefront-app (apps/storefront): import 패키지 2개, 무거운 의존성 1개, 중복 패키지 0개, 약 13 KB 정리 여지"
+    ));
 }
 
 #[test]
