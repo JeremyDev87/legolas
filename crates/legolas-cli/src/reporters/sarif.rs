@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::argv::ReportLanguage;
 use legolas_core::{
     boundaries::BoundaryWarning, budget::BudgetEvaluation, Analysis, BaselineDiff,
     DuplicatePackage, FindingConfidence, FindingEvidence, FindingMetadata, HeavyDependency,
@@ -11,11 +12,24 @@ const SARIF_SCHEMA_URL: &str = "https://json.schemastore.org/sarif-2.1.0.json";
 const SARIF_VERSION: &str = "2.1.0";
 const LEGOLAS_INFO_URL: &str = "https://github.com/JeremyDev87/legolas";
 
+pub fn scan_sarif_output_for_language(analysis: &Analysis, _language: ReportLanguage) -> Value {
+    scan_sarif_output(analysis)
+}
+
 pub fn scan_sarif_output(analysis: &Analysis) -> Value {
     sarif_output(
         collect_scan_records(analysis),
         base_run_properties("scan", analysis),
     )
+}
+
+pub fn ci_sarif_output_for_language(
+    analysis: &Analysis,
+    evaluation: &BudgetEvaluation,
+    regression_diff: Option<&BaselineDiff>,
+    _language: ReportLanguage,
+) -> Value {
+    ci_sarif_output(analysis, evaluation, regression_diff)
 }
 
 pub fn ci_sarif_output(

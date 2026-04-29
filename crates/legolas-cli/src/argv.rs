@@ -13,6 +13,13 @@ pub enum Command {
     Unknown(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ReportLanguage {
+    #[default]
+    Ko,
+    En,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CliArgs {
     pub command: Option<Command>,
@@ -27,6 +34,7 @@ pub struct CliArgs {
     pub top: Option<usize>,
     pub help: bool,
     pub version: bool,
+    pub lang: ReportLanguage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +85,10 @@ where
             }
             "--config" => {
                 parsed.config_path = Some(parse_path_flag(&tokens, index, "--config")?);
+                index += 1;
+            }
+            "--lang" => {
+                parsed.lang = parse_language_flag(&tokens, index)?;
                 index += 1;
             }
             "--baseline" => {
@@ -166,6 +178,16 @@ fn parse_path_flag(tokens: &[String], index: usize, flag: &str) -> Result<PathBu
     }
 
     resolve_path_token(next)
+}
+
+fn parse_language_flag(tokens: &[String], index: usize) -> Result<ReportLanguage> {
+    match tokens.get(index + 1).map(String::as_str) {
+        Some("ko") => Ok(ReportLanguage::Ko),
+        Some("en") => Ok(ReportLanguage::En),
+        _ => Err(LegolasError::CliUsage(
+            "--lang expects ko or en".to_string(),
+        )),
+    }
 }
 
 fn validate_baseline_flags(parsed: &CliArgs) -> Result<()> {

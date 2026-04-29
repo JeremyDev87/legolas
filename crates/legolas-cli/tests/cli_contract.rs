@@ -29,12 +29,35 @@ fn prints_version_without_a_command() {
 #[test]
 fn prints_help_for_empty_command_and_help_variants() {
     for args in [
-        Vec::<&str>::new(),
+        vec![],
+        vec!["--lang", "ko"],
         vec!["help"],
         vec!["--help"],
         vec!["-h"],
         vec!["budget", "--help", "--limit", "1"],
         vec!["ci", "--help", "--top", "1"],
+    ] {
+        let output = Command::cargo_bin("legolas-cli")
+            .expect("build binary")
+            .args(args)
+            .output()
+            .expect("run help");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout).expect("stdout");
+        assert!(stdout.contains("사용법:"));
+        assert!(stdout.contains("전역 옵션:"));
+        assert_eq!(String::from_utf8(output.stderr).expect("stderr"), "");
+    }
+}
+
+#[test]
+fn prints_english_help_when_lang_en_is_requested() {
+    for args in [
+        vec!["--lang", "en"],
+        vec!["help", "--lang", "en"],
+        vec!["--lang", "en", "help"],
+        vec!["--help", "--lang", "en"],
     ] {
         let output = Command::cargo_bin("legolas-cli")
             .expect("build binary")
@@ -423,6 +446,14 @@ fn matches_missing_number_and_unknown_flag_contracts() {
         (
             vec!["--bogus".to_string()],
             "legolas: unknown flag \"--bogus\"\n",
+        ),
+        (
+            vec!["--lang".to_string(), "fr".to_string()],
+            "legolas: --lang expects ko or en\n",
+        ),
+        (
+            vec!["help".to_string(), "--lang".to_string()],
+            "legolas: --lang expects ko or en\n",
         ),
         (
             vec!["scan".to_string(), "--config".to_string()],

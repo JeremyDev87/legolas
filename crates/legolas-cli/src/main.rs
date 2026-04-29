@@ -5,12 +5,13 @@ use std::{
 };
 
 use legolas_cli::{
-    argv::{self, Command},
+    argv::{self, Command, ReportLanguage},
     reporters::{
-        sarif::{ci_sarif_output, scan_sarif_output},
+        sarif::{ci_sarif_output_for_language, scan_sarif_output_for_language},
         text::{
-            format_budget_report, format_ci_report, format_optimize_report, format_scan_report,
-            format_visualization_report,
+            format_budget_report_for_language, format_ci_report_for_language,
+            format_optimize_report_for_language, format_scan_report_for_language,
+            format_visualization_report_for_language,
         },
     },
 };
@@ -28,7 +29,33 @@ const ANALYSIS_SCHEMA_VERSION: &str = "legolas.analysis.v1";
 const BUDGET_SCHEMA_VERSION: &str = "legolas.budget.v1";
 const CI_SCHEMA_VERSION: &str = "legolas.ci.v1";
 
-const HELP_TEXT: &str = r#"Legolas
+const HELP_TEXT_KO: &str = r#"Legolas
+정밀하게 번들 크기를 줄입니다.
+
+Usage: / 사용법:
+  legolas scan [path] [--config file] [--json | --sarif] [--write-baseline file] [--baseline file --regression-only]
+  legolas visualize [path] [--config file] [--limit 10]
+  legolas optimize [path] [--config file] [--top 5] [--json] [--baseline file --regression-only]
+  legolas budget [path] [--config file] [--json] [--baseline file --regression-only]
+  legolas ci [path] [--config file] [--json | --sarif] [--baseline file --regression-only]
+  legolas help [--lang ko|en]
+
+전역 옵션:
+  --lang ko|en  도움말과 텍스트 리포트 언어를 선택합니다. 기본값은 ko입니다.
+
+예시:
+  legolas scan .
+  legolas scan ./apps/storefront --sarif
+  legolas scan ./apps/storefront --write-baseline ./baseline.json --json
+  legolas scan ./apps/storefront --baseline ./baseline.json --regression-only --json
+  legolas scan --config ./legolas.config.json
+  legolas visualize ./apps/storefront --limit 12
+  legolas optimize ./apps/storefront --top 7 --baseline ./baseline.json --regression-only
+  legolas budget ./apps/storefront --baseline ./baseline.json --regression-only --json
+  legolas ci ./apps/storefront --baseline ./baseline.json --regression-only --sarif
+"#;
+
+const HELP_TEXT_EN: &str = r#"Legolas
 Slim bundles with precision.
 
 Usage:
@@ -69,8 +96,13 @@ fn run() -> Result<i32> {
         return Ok(0);
     }
 
-    if parsed.help || parsed.command.is_none() || matches!(parsed.command, Some(Command::Help)) {
-        print!("{HELP_TEXT}");
+    if parsed.command.is_none() && !parsed.help {
+        print!("{}", help_text(parsed.lang));
+        return Ok(0);
+    }
+
+    if parsed.help || matches!(parsed.command, Some(Command::Help)) {
+        print!("{}", help_text(parsed.lang));
         return Ok(0);
     }
 
@@ -118,13 +150,14 @@ fn run() -> Result<i32> {
 
     if parsed.sarif {
         let output = match command {
-            Command::Scan => scan_sarif_output(&output_analysis),
-            Command::Ci => ci_sarif_output(
+            Command::Scan => scan_sarif_output_for_language(&output_analysis, parsed.lang),
+            Command::Ci => ci_sarif_output_for_language(
                 &output_analysis,
                 budget_evaluation
                     .as_ref()
                     .expect("budget evaluation exists for ci command"),
                 regression_diff.as_ref(),
+                parsed.lang,
             ),
             Command::Visualize | Command::Optimize | Command::Budget => {
                 unreachable!("argv validation already restricts --sarif")
@@ -193,26 +226,30 @@ fn run() -> Result<i32> {
     }
 
     let output = match command {
-        Command::Scan => format_scan_report(&output_analysis),
-        Command::Visualize => format_visualization_report(
+        Command::Scan => format_scan_report_for_language(&output_analysis, parsed.lang),
+        Command::Visualize => format_visualization_report_for_language(
             &output_analysis,
             resolve_visualize_limit(&parsed, loaded_config.as_ref()),
+            parsed.lang,
         ),
-        Command::Optimize => format_optimize_report(
+        Command::Optimize => format_optimize_report_for_language(
             &output_analysis,
             resolve_optimize_top(&parsed, loaded_config.as_ref()),
+            parsed.lang,
         ),
-        Command::Budget => format_budget_report(
+        Command::Budget => format_budget_report_for_language(
             &output_analysis,
             budget_evaluation
                 .as_ref()
                 .expect("budget evaluation exists for budget command"),
+            parsed.lang,
         ),
-        Command::Ci => format_ci_report(
+        Command::Ci => format_ci_report_for_language(
             &output_analysis,
             budget_evaluation
                 .as_ref()
                 .expect("budget evaluation exists for ci command"),
+            parsed.lang,
         ),
         Command::Help | Command::Unknown(_) => unreachable!("handled above"),
     };
@@ -236,6 +273,13 @@ fn run() -> Result<i32> {
     }
 
     Ok(0)
+}
+
+fn help_text(language: ReportLanguage) -> &'static str {
+    match language {
+        ReportLanguage::Ko => HELP_TEXT_KO,
+        ReportLanguage::En => HELP_TEXT_EN,
+    }
 }
 
 fn resolve_baseline_snapshot(parsed: &argv::CliArgs) -> Result<Option<BaselineSnapshot>> {
