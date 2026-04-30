@@ -3,7 +3,7 @@ mod support;
 use std::collections::BTreeSet;
 
 use assert_cmd::Command;
-use serde_json::json;
+use serde_json::{json, Value};
 
 fn run_cli(args: &[&str]) -> std::process::Output {
     Command::cargo_bin("legolas-cli")
@@ -36,6 +36,10 @@ fn scan_sarif_preserves_rule_ids_locations_and_metadata() {
     );
     assert_eq!(sarif["version"], json!("2.1.0"));
     assert_eq!(sarif["runs"][0]["properties"]["command"], json!("scan"));
+    assert_eq!(
+        sarif["runs"][0]["properties"]["reportSummary"]["language"],
+        json!("ko")
+    );
 
     let results = sarif["runs"][0]["results"]
         .as_array()
@@ -59,6 +63,20 @@ fn scan_sarif_preserves_rule_ids_locations_and_metadata() {
         .find(|result| result["ruleId"] == "heavy-dependency:chart.js")
         .expect("chart.js result");
     assert_eq!(chart_js["level"], json!("warning"));
+    assert!(chart_js["message"]["text"]
+        .as_str()
+        .expect("message text")
+        .starts_with("chart.js 초기 번들 무게가 큽니다 (160 KB)."));
+    let chart_js_rule = sarif["runs"][0]["tool"]["driver"]["rules"]
+        .as_array()
+        .expect("driver rules")
+        .iter()
+        .find(|rule| rule["id"] == "heavy-dependency:chart.js")
+        .expect("chart.js rule");
+    assert_eq!(
+        chart_js_rule["shortDescription"]["text"],
+        json!("chart.js 초기 번들 무게 검토")
+    );
     assert_eq!(
         chart_js["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
         json!("src/Dashboard.tsx")
@@ -101,6 +119,54 @@ fn scan_sarif_preserves_rule_ids_locations_and_metadata() {
 }
 
 #[test]
+fn scan_sarif_language_flag_changes_human_text_not_rule_ids() {
+    let fixture = support::fixture_path("tests/fixtures/parity/basic-app");
+    let ko_output = run_cli(&["scan", &fixture.display().to_string(), "--sarif"]);
+    let en_output = run_cli(&[
+        "scan",
+        &fixture.display().to_string(),
+        "--sarif",
+        "--lang",
+        "en",
+    ]);
+
+    assert!(ko_output.status.success());
+    assert!(en_output.status.success());
+    let ko = support::normalize_sarif_output(&stdout(&ko_output));
+    let en = support::normalize_sarif_output(&stdout(&en_output));
+
+    assert_eq!(
+        ko["runs"][0]["properties"]["reportSummary"]["language"],
+        json!("ko")
+    );
+    assert_eq!(
+        en["runs"][0]["properties"]["reportSummary"]["language"],
+        json!("en")
+    );
+    assert_eq!(sarif_rule_ids(&ko), sarif_rule_ids(&en));
+
+    let en_results = en["runs"][0]["results"].as_array().expect("results");
+    let chart_js = en_results
+        .iter()
+        .find(|result| result["ruleId"] == "heavy-dependency:chart.js")
+        .expect("chart.js result");
+    assert!(chart_js["message"]["text"]
+        .as_str()
+        .expect("message text")
+        .starts_with("chart.js (160 KB):"));
+    let chart_js_rule = en["runs"][0]["tool"]["driver"]["rules"]
+        .as_array()
+        .expect("driver rules")
+        .iter()
+        .find(|rule| rule["id"] == "heavy-dependency:chart.js")
+        .expect("chart.js rule");
+    assert_eq!(
+        chart_js_rule["shortDescription"]["text"],
+        json!("Review chart.js upfront bundle weight")
+    );
+}
+
+#[test]
 fn ci_sarif_uses_triggered_findings_and_preserves_failure_exit_code() {
     let fixture = support::fixture_path("tests/fixtures/parity/basic-app");
     let output = run_cli(&["ci", &fixture.display().to_string(), "--sarif"]);
@@ -114,6 +180,10 @@ fn ci_sarif_uses_triggered_findings_and_preserves_failure_exit_code() {
 
     let sarif = support::normalize_sarif_output(&stdout(&output));
     assert_eq!(sarif["runs"][0]["properties"]["command"], json!("ci"));
+    assert_eq!(
+        sarif["runs"][0]["properties"]["reportSummary"]["language"],
+        json!("ko")
+    );
     assert_eq!(sarif["runs"][0]["properties"]["passed"], json!(false));
     assert_eq!(
         sarif["runs"][0]["properties"]["overallStatus"],
@@ -145,6 +215,15 @@ fn ci_sarif_uses_triggered_findings_and_preserves_failure_exit_code() {
             "tree-shaking:react-icons-root-import".to_string(),
         ])
     );
+}
+
+fn sarif_rule_ids(sarif: &Value) -> BTreeSet<String> {
+    sarif["runs"][0]["results"]
+        .as_array()
+        .expect("results array")
+        .iter()
+        .map(|result| result["ruleId"].as_str().expect("rule id").to_string())
+        .collect()
 }
 
 #[test]

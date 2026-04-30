@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::argv::ReportLanguage;
 use legolas_core::{
-    boundaries::BoundaryWarning, budget::BudgetEvaluation, Analysis, BaselineDiff,
-    DuplicatePackage, FindingConfidence, FindingEvidence, FindingMetadata, HeavyDependency,
-    LazyLoadCandidate, TreeShakingWarning,
+    boundaries::BoundaryWarning, budget::BudgetEvaluation, report_summary::build_report_summary,
+    Analysis, BaselineDiff, DuplicatePackage, FindingConfidence, FindingEvidence, FindingMetadata,
+    HeavyDependency, LazyLoadCandidate, TreeShakingWarning,
 };
 use serde_json::{json, Map, Value};
 
@@ -12,30 +12,22 @@ const SARIF_SCHEMA_URL: &str = "https://json.schemastore.org/sarif-2.1.0.json";
 const SARIF_VERSION: &str = "2.1.0";
 const LEGOLAS_INFO_URL: &str = "https://github.com/JeremyDev87/legolas";
 
-pub fn scan_sarif_output_for_language(analysis: &Analysis, _language: ReportLanguage) -> Value {
-    scan_sarif_output(analysis)
+pub fn scan_sarif_output_for_language(analysis: &Analysis, language: ReportLanguage) -> Value {
+    sarif_output(
+        collect_scan_records(analysis, language),
+        base_run_properties("scan", analysis, language),
+    )
 }
 
 pub fn scan_sarif_output(analysis: &Analysis) -> Value {
-    sarif_output(
-        collect_scan_records(analysis),
-        base_run_properties("scan", analysis),
-    )
+    scan_sarif_output_for_language(analysis, ReportLanguage::Ko)
 }
 
 pub fn ci_sarif_output_for_language(
     analysis: &Analysis,
     evaluation: &BudgetEvaluation,
     regression_diff: Option<&BaselineDiff>,
-    _language: ReportLanguage,
-) -> Value {
-    ci_sarif_output(analysis, evaluation, regression_diff)
-}
-
-pub fn ci_sarif_output(
-    analysis: &Analysis,
-    evaluation: &BudgetEvaluation,
-    regression_diff: Option<&BaselineDiff>,
+    language: ReportLanguage,
 ) -> Value {
     let triggered_finding_ids = evaluation
         .rules
@@ -47,15 +39,23 @@ pub fn ci_sarif_output(
         })
         .collect::<BTreeSet<_>>();
 
-    let records = collect_scan_records(analysis)
+    let records = collect_scan_records(analysis, language)
         .into_iter()
         .filter(|record| triggered_finding_ids.contains(&record.rule_id))
         .collect::<Vec<_>>();
 
     sarif_output(
         records,
-        ci_run_properties(analysis, evaluation, regression_diff),
+        ci_run_properties(analysis, evaluation, regression_diff, language),
     )
+}
+
+pub fn ci_sarif_output(
+    analysis: &Analysis,
+    evaluation: &BudgetEvaluation,
+    regression_diff: Option<&BaselineDiff>,
+) -> Value {
+    ci_sarif_output_for_language(analysis, evaluation, regression_diff, ReportLanguage::Ko)
 }
 
 #[derive(Debug, Clone)]
@@ -68,61 +68,82 @@ struct SarifRecord {
     properties: Map<String, Value>,
 }
 
-fn collect_scan_records(analysis: &Analysis) -> Vec<SarifRecord> {
+fn collect_scan_records(analysis: &Analysis, language: ReportLanguage) -> Vec<SarifRecord> {
     let mut records = Vec::new();
 
     records.extend(
         analysis
             .boundary_warnings
             .iter()
-            .filter_map(boundary_warning_record),
+            .filter_map(|item| boundary_warning_record(item, language)),
     );
     records.extend(
         analysis
             .heavy_dependencies
             .iter()
-            .filter_map(heavy_dependency_record),
+            .filter_map(|item| heavy_dependency_record(item, language)),
     );
     records.extend(
         analysis
             .duplicate_packages
             .iter()
-            .filter_map(duplicate_package_record),
+            .filter_map(|item| duplicate_package_record(item, language)),
     );
     records.extend(
         analysis
             .lazy_load_candidates
             .iter()
-            .filter_map(lazy_load_candidate_record),
+            .filter_map(|item| lazy_load_candidate_record(item, language)),
     );
     records.extend(
         analysis
             .tree_shaking_warnings
             .iter()
-            .filter_map(tree_shaking_warning_record),
+            .filter_map(|item| tree_shaking_warning_record(item, language)),
     );
 
     records
 }
 
-fn boundary_warning_record(item: &BoundaryWarning) -> Option<SarifRecord> {
+fn boundary_warning_record(
+    item: &BoundaryWarning,
+    language: ReportLanguage,
+) -> Option<SarifRecord> {
     finding_record(
         &item.finding,
-        item.message.clone(),
-        item.message.clone(),
+        match language {
+            ReportLanguage::Ko => format!("번들 경계 경고: {}", item.message),
+            ReportLanguage::En => item.message.clone(),
+        },
+        match language {
+            ReportLanguage::Ko => "번들 경계 검토".to_string(),
+            ReportLanguage::En => item.message.clone(),
+        },
         Some(item.recommendation.as_str()),
         [],
     )
 }
 
-fn heavy_dependency_record(item: &HeavyDependency) -> Option<SarifRecord> {
+fn heavy_dependency_record(
+    item: &HeavyDependency,
+    language: ReportLanguage,
+) -> Option<SarifRecord> {
     finding_record(
         &item.finding,
-        format!(
-            "{} ({} KB): {}",
-            item.name, item.estimated_kb, item.rationale
-        ),
-        format!("Review {} upfront bundle weight", item.name),
+        match language {
+            ReportLanguage::Ko => format!(
+                "{} 초기 번들 무게가 큽니다 ({} KB).",
+                item.name, item.estimated_kb
+            ),
+            ReportLanguage::En => format!(
+                "{} ({} KB): {}",
+                item.name, item.estimated_kb, item.rationale
+            ),
+        },
+        match language {
+            ReportLanguage::Ko => format!("{} 초기 번들 무게 검토", item.name),
+            ReportLanguage::En => format!("Review {} upfront bundle weight", item.name),
+        },
         Some(item.recommendation.as_str()),
         [
             ("name", json!(item.name)),
@@ -136,16 +157,30 @@ fn heavy_dependency_record(item: &HeavyDependency) -> Option<SarifRecord> {
     )
 }
 
-fn duplicate_package_record(item: &DuplicatePackage) -> Option<SarifRecord> {
+fn duplicate_package_record(
+    item: &DuplicatePackage,
+    language: ReportLanguage,
+) -> Option<SarifRecord> {
     finding_record(
         &item.finding,
-        format!(
-            "{} duplicated across {} ({} KB avoidable)",
-            item.name,
-            item.versions.join(", "),
-            item.estimated_extra_kb
-        ),
-        format!("Deduplicate {}", item.name),
+        match language {
+            ReportLanguage::Ko => format!(
+                "{} 중복 버전 {} (정리 가능 {} KB)",
+                item.name,
+                item.versions.join(", "),
+                item.estimated_extra_kb
+            ),
+            ReportLanguage::En => format!(
+                "{} duplicated across {} ({} KB avoidable)",
+                item.name,
+                item.versions.join(", "),
+                item.estimated_extra_kb
+            ),
+        },
+        match language {
+            ReportLanguage::Ko => format!("{} 중복 제거", item.name),
+            ReportLanguage::En => format!("Deduplicate {}", item.name),
+        },
         None,
         [
             ("name", json!(item.name)),
@@ -157,14 +192,26 @@ fn duplicate_package_record(item: &DuplicatePackage) -> Option<SarifRecord> {
     )
 }
 
-fn lazy_load_candidate_record(item: &LazyLoadCandidate) -> Option<SarifRecord> {
+fn lazy_load_candidate_record(
+    item: &LazyLoadCandidate,
+    language: ReportLanguage,
+) -> Option<SarifRecord> {
     finding_record(
         &item.finding,
-        format!(
-            "{} can be lazy loaded ({} KB): {}",
-            item.name, item.estimated_savings_kb, item.reason
-        ),
-        format!("Lazy load {}", item.name),
+        match language {
+            ReportLanguage::Ko => format!(
+                "지연 로딩 후보: {} ({} KB).",
+                item.name, item.estimated_savings_kb
+            ),
+            ReportLanguage::En => format!(
+                "{} can be lazy loaded ({} KB): {}",
+                item.name, item.estimated_savings_kb, item.reason
+            ),
+        },
+        match language {
+            ReportLanguage::Ko => format!("{} 지연 로딩", item.name),
+            ReportLanguage::En => format!("Lazy load {}", item.name),
+        },
         Some(item.recommendation.as_str()),
         [
             ("name", json!(item.name)),
@@ -175,11 +222,23 @@ fn lazy_load_candidate_record(item: &LazyLoadCandidate) -> Option<SarifRecord> {
     )
 }
 
-fn tree_shaking_warning_record(item: &TreeShakingWarning) -> Option<SarifRecord> {
+fn tree_shaking_warning_record(
+    item: &TreeShakingWarning,
+    language: ReportLanguage,
+) -> Option<SarifRecord> {
     finding_record(
         &item.finding,
-        format!("{}: {}", item.package_name, item.message),
-        format!("Review {} tree shaking", item.package_name),
+        match language {
+            ReportLanguage::Ko => format!(
+                "{} import 방식을 정리하세요 ({} KB).",
+                item.package_name, item.estimated_kb
+            ),
+            ReportLanguage::En => format!("{}: {}", item.package_name, item.message),
+        },
+        match language {
+            ReportLanguage::Ko => format!("{} import 정리", item.package_name),
+            ReportLanguage::En => format!("Review {} tree shaking", item.package_name),
+        },
         Some(item.recommendation.as_str()),
         [
             ("key", json!(item.key)),
@@ -271,9 +330,17 @@ fn sarif_level(confidence: Option<FindingConfidence>) -> &'static str {
     }
 }
 
-fn base_run_properties(command: &str, analysis: &Analysis) -> Map<String, Value> {
+fn base_run_properties(
+    command: &str,
+    analysis: &Analysis,
+    language: ReportLanguage,
+) -> Map<String, Value> {
     let mut properties = Map::new();
     properties.insert("command".to_string(), json!(command));
+    properties.insert(
+        "reportSummary".to_string(),
+        report_summary_json(analysis, language),
+    );
 
     if !analysis.warnings.is_empty() {
         properties.insert("warnings".to_string(), json!(analysis.warnings));
@@ -286,8 +353,9 @@ fn ci_run_properties(
     analysis: &Analysis,
     evaluation: &BudgetEvaluation,
     regression_diff: Option<&BaselineDiff>,
+    language: ReportLanguage,
 ) -> Map<String, Value> {
-    let mut properties = base_run_properties("ci", analysis);
+    let mut properties = base_run_properties("ci", analysis, language);
     properties.insert("passed".to_string(), json!(!evaluation.has_failures()));
     properties.insert(
         "overallStatus".to_string(),
@@ -306,6 +374,28 @@ fn ci_run_properties(
     }
 
     properties
+}
+
+fn report_summary_json(analysis: &Analysis, language: ReportLanguage) -> Value {
+    let mut summary =
+        serde_json::to_value(build_report_summary(analysis)).expect("report summary serializes");
+    let Value::Object(object) = &mut summary else {
+        unreachable!("serialized report summary must be an object");
+    };
+
+    object.insert(
+        "language".to_string(),
+        json!(report_language_code(language)),
+    );
+
+    summary
+}
+
+fn report_language_code(language: ReportLanguage) -> &'static str {
+    match language {
+        ReportLanguage::Ko => "ko",
+        ReportLanguage::En => "en",
+    }
 }
 
 fn sarif_output(records: Vec<SarifRecord>, run_properties: Map<String, Value>) -> Value {

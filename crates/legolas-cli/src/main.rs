@@ -21,6 +21,7 @@ use legolas_core::{
     budget::{evaluate_budget, BudgetEvaluation},
     config::{load_config_file, load_discovered_config, LoadedConfig},
     impact::estimate_impact,
+    report_summary::build_report_summary,
     AnalyzeOptions, LegolasError, Result,
 };
 use serde_json::{json, Map, Value};
@@ -193,6 +194,7 @@ fn run() -> Result<i32> {
                 budget_evaluation
                     .as_ref()
                     .expect("budget evaluation exists for budget command"),
+                parsed.lang,
             ),
             Command::Ci => ci_json_output(
                 &output_analysis,
@@ -200,8 +202,9 @@ fn run() -> Result<i32> {
                     .as_ref()
                     .expect("budget evaluation exists for ci command"),
                 regression_diff.as_ref(),
+                parsed.lang,
             ),
-            _ => analysis_json_output(&output_analysis)?,
+            _ => analysis_json_output(&output_analysis, parsed.lang)?,
         };
         println!("{}", serde_json::to_string_pretty(&output)?);
 
@@ -317,17 +320,32 @@ fn write_baseline_snapshot(path: &Path, analysis: &legolas_core::Analysis) -> Re
     fs::write(path, serde_json::to_string_pretty(&snapshot)?).map_err(Into::into)
 }
 
-fn analysis_json_output(analysis: &legolas_core::Analysis) -> Result<Value> {
+fn analysis_json_output(
+    analysis: &legolas_core::Analysis,
+    language: ReportLanguage,
+) -> Result<Value> {
     let mut output = Map::new();
     output.insert("schemaVersion".to_string(), json!(ANALYSIS_SCHEMA_VERSION));
+    output.insert(
+        "reportSummary".to_string(),
+        report_summary_json(analysis, language),
+    );
     output.extend(analysis_value_to_object(analysis)?);
 
     Ok(Value::Object(output))
 }
 
-fn budget_json_output(analysis: &legolas_core::Analysis, evaluation: &BudgetEvaluation) -> Value {
+fn budget_json_output(
+    analysis: &legolas_core::Analysis,
+    evaluation: &BudgetEvaluation,
+    language: ReportLanguage,
+) -> Value {
     let mut output = Map::new();
     output.insert("schemaVersion".to_string(), json!(BUDGET_SCHEMA_VERSION));
+    output.insert(
+        "reportSummary".to_string(),
+        report_summary_json(analysis, language),
+    );
     output.insert(
         "overallStatus".to_string(),
         json!(evaluation.overall_status),
@@ -348,9 +366,14 @@ fn ci_json_output(
     analysis: &legolas_core::Analysis,
     evaluation: &BudgetEvaluation,
     regression_diff: Option<&legolas_core::BaselineDiff>,
+    language: ReportLanguage,
 ) -> Value {
     let mut output = Map::new();
     output.insert("schemaVersion".to_string(), json!(CI_SCHEMA_VERSION));
+    output.insert(
+        "reportSummary".to_string(),
+        report_summary_json(analysis, language),
+    );
     output.insert("passed".to_string(), json!(!evaluation.has_failures()));
     output.insert(
         "overallStatus".to_string(),
@@ -376,6 +399,28 @@ fn ci_json_output(
     }
 
     Value::Object(output)
+}
+
+fn report_summary_json(analysis: &legolas_core::Analysis, language: ReportLanguage) -> Value {
+    let mut summary = serde_json::to_value(build_report_summary(analysis))
+        .expect("report summary must serialize to JSON");
+    let Value::Object(object) = &mut summary else {
+        unreachable!("serialized report summary must be an object");
+    };
+
+    object.insert(
+        "language".to_string(),
+        json!(report_language_code(language)),
+    );
+
+    summary
+}
+
+fn report_language_code(language: ReportLanguage) -> &'static str {
+    match language {
+        ReportLanguage::Ko => "ko",
+        ReportLanguage::En => "en",
+    }
 }
 
 fn analysis_value_to_object(analysis: &legolas_core::Analysis) -> Result<Map<String, Value>> {

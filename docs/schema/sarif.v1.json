@@ -89,7 +89,8 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "command"
+              "command",
+              "reportSummary"
             ],
             "properties": {
               "command": {
@@ -98,6 +99,115 @@
                   "scan",
                   "ci"
                 ]
+              },
+              "reportSummary": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": [
+                  "language",
+                  "verdictKey",
+                  "textSource",
+                  "confirmedInitialPayloadKbSaved",
+                  "directionalOpportunityKb",
+                  "estimatedLcpImprovementMs",
+                  "topActions",
+                  "groupSummaries"
+                ],
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "ko",
+                      "en"
+                    ]
+                  },
+                  "verdictKey": {
+                    "type": "string"
+                  },
+                  "textSource": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "titleKey",
+                      "bodyKey"
+                    ],
+                    "properties": {
+                      "titleKey": {
+                        "type": "string"
+                      },
+                      "bodyKey": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "confirmedInitialPayloadKbSaved": {
+                    "type": "integer"
+                  },
+                  "directionalOpportunityKb": {
+                    "type": "integer"
+                  },
+                  "estimatedLcpImprovementMs": {
+                    "type": "integer"
+                  },
+                  "topActions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "actionPriority",
+                        "findingId",
+                        "estimatedSavingsKb",
+                        "confidence",
+                        "difficulty"
+                      ],
+                      "properties": {
+                        "actionPriority": {
+                          "type": "integer"
+                        },
+                        "findingId": {
+                          "type": "string"
+                        },
+                        "estimatedSavingsKb": {
+                          "type": "integer"
+                        },
+                        "confidence": {
+                          "type": "string"
+                        },
+                        "difficulty": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "groupSummaries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "key",
+                        "findingCount",
+                        "confirmedInitialPayloadKbSaved",
+                        "directionalOpportunityKb"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "findingCount": {
+                          "type": "integer"
+                        },
+                        "confirmedInitialPayloadKbSaved": {
+                          "type": "integer"
+                        },
+                        "directionalOpportunityKb": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
               },
               "warnings": {
                 "type": "array",
