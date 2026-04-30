@@ -1,5 +1,7 @@
 mod support;
 
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
 use assert_cmd::Command;
 use serde_json::{json, Value};
 
@@ -24,6 +26,11 @@ fn scan_json_matches_analysis_schema_doc() {
     let schema = read_schema("analysis.v1.schema.json");
 
     assert_eq!(value["schemaVersion"], json!(ANALYSIS_SCHEMA_VERSION));
+    assert_eq!(value["reportSummary"]["language"], json!("ko"));
+    assert_eq!(
+        value["duplicatePackages"][0]["impactScope"],
+        json!("unknown")
+    );
     assert_matches_schema(&value, &schema, "$");
 }
 
@@ -42,7 +49,30 @@ fn optimize_json_matches_analysis_schema_doc() {
     let schema = read_schema("analysis.v1.schema.json");
 
     assert_eq!(value["schemaVersion"], json!(ANALYSIS_SCHEMA_VERSION));
+    assert_eq!(value["reportSummary"]["language"], json!("ko"));
     assert_matches_schema(&value, &schema, "$");
+}
+
+#[test]
+fn scan_json_report_summary_honors_language_flag() {
+    let fixture = support::fixture_path("tests/fixtures/parity/basic-app");
+    let output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args([
+            "scan",
+            &fixture.display().to_string(),
+            "--json",
+            "--lang",
+            "en",
+        ])
+        .output()
+        .expect("run scan --json --lang en");
+
+    assert!(output.status.success());
+    let output = String::from_utf8(output.stdout).expect("stdout");
+    let value = serde_json::from_str::<Value>(&output).expect("parse scan json");
+
+    assert_eq!(value["reportSummary"]["language"], json!("en"));
 }
 
 #[test]
@@ -60,6 +90,7 @@ fn budget_json_matches_budget_schema_doc() {
     let schema = read_schema("budget.v1.schema.json");
 
     assert_eq!(value["schemaVersion"], json!(BUDGET_SCHEMA_VERSION));
+    assert_eq!(value["reportSummary"]["language"], json!("ko"));
     assert_matches_schema(&value, &schema, "$");
 }
 
@@ -78,6 +109,7 @@ fn ci_json_matches_ci_schema_doc() {
     let schema = read_schema("ci.v1.schema.json");
 
     assert_eq!(value["schemaVersion"], json!(CI_SCHEMA_VERSION));
+    assert_eq!(value["reportSummary"]["language"], json!("ko"));
     assert_matches_schema(&value, &schema, "$");
 }
 
@@ -104,6 +136,7 @@ fn regression_only_ci_json_matches_ci_schema_doc() {
     let schema = read_schema("ci.v1.schema.json");
 
     assert_eq!(value["schemaVersion"], json!(CI_SCHEMA_VERSION));
+    assert_eq!(value["reportSummary"]["language"], json!("ko"));
     assert_matches_schema(&value, &schema, "$");
 }
 
@@ -123,6 +156,10 @@ fn scan_sarif_matches_schema_doc() {
 
     assert_eq!(value["$schema"], json!(SARIF_SCHEMA_URL));
     assert_eq!(value["version"], json!(SARIF_VERSION));
+    assert_eq!(
+        value["runs"][0]["properties"]["reportSummary"]["language"],
+        json!("ko")
+    );
     assert_matches_schema(&value, &schema, "$");
 }
 
@@ -142,6 +179,10 @@ fn ci_sarif_matches_schema_doc() {
 
     assert_eq!(value["$schema"], json!(SARIF_SCHEMA_URL));
     assert_eq!(value["version"], json!(SARIF_VERSION));
+    assert_eq!(
+        value["runs"][0]["properties"]["reportSummary"]["language"],
+        json!("ko")
+    );
     assert_matches_schema(&value, &schema, "$");
 }
 
@@ -169,7 +210,72 @@ fn regression_only_ci_sarif_matches_schema_doc() {
 
     assert_eq!(value["$schema"], json!(SARIF_SCHEMA_URL));
     assert_eq!(value["version"], json!(SARIF_VERSION));
+    assert_eq!(
+        value["runs"][0]["properties"]["reportSummary"]["language"],
+        json!("ko")
+    );
     assert_matches_schema(&value, &schema, "$");
+}
+
+#[test]
+fn schema_docs_require_report_summary_contract() {
+    let fixture = support::fixture_path("tests/fixtures/parity/basic-app");
+
+    let scan_output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["scan", &fixture.display().to_string(), "--json"])
+        .output()
+        .expect("run scan --json");
+    assert!(scan_output.status.success());
+    let mut scan = serde_json::from_slice::<Value>(&scan_output.stdout).expect("parse scan json");
+    scan.as_object_mut()
+        .expect("scan object")
+        .remove("reportSummary")
+        .expect("report summary exists");
+    assert_schema_rejects(&scan, &read_schema("analysis.v1.schema.json"), "$");
+
+    let budget_output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["budget", &fixture.display().to_string(), "--json"])
+        .output()
+        .expect("run budget --json");
+    assert!(budget_output.status.success());
+    let mut budget =
+        serde_json::from_slice::<Value>(&budget_output.stdout).expect("parse budget json");
+    budget
+        .as_object_mut()
+        .expect("budget object")
+        .remove("reportSummary")
+        .expect("report summary exists");
+    assert_schema_rejects(&budget, &read_schema("budget.v1.schema.json"), "$");
+
+    let ci_output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["ci", &fixture.display().to_string(), "--json"])
+        .output()
+        .expect("run ci --json");
+    assert!(!ci_output.status.success());
+    let mut ci = serde_json::from_slice::<Value>(&ci_output.stdout).expect("parse ci json");
+    ci.as_object_mut()
+        .expect("ci object")
+        .remove("reportSummary")
+        .expect("report summary exists");
+    assert_schema_rejects(&ci, &read_schema("ci.v1.schema.json"), "$");
+
+    let sarif_output = Command::cargo_bin("legolas-cli")
+        .expect("build binary")
+        .args(["scan", &fixture.display().to_string(), "--sarif"])
+        .output()
+        .expect("run scan --sarif");
+    assert!(sarif_output.status.success());
+    let mut sarif =
+        serde_json::from_slice::<Value>(&sarif_output.stdout).expect("parse scan sarif");
+    sarif["runs"][0]["properties"]
+        .as_object_mut()
+        .expect("sarif run properties")
+        .remove("reportSummary")
+        .expect("report summary exists");
+    assert_schema_rejects(&sarif, &read_schema("sarif.v1.json"), "$");
 }
 
 fn read_schema(relative_path: &str) -> Value {
@@ -180,6 +286,17 @@ fn read_schema(relative_path: &str) -> Value {
     let contents = std::fs::read_to_string(&schema_path).expect("read schema");
 
     serde_json::from_str(&contents).expect("parse schema")
+}
+
+fn assert_schema_rejects(value: &Value, schema: &Value, path: &str) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        assert_matches_schema(value, schema, path);
+    }));
+
+    assert!(
+        result.is_err(),
+        "{path}: schema unexpectedly accepted value"
+    );
 }
 
 fn assert_matches_schema(value: &Value, schema: &Value, path: &str) {

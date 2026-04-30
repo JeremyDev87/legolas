@@ -131,7 +131,7 @@ fn budget_json_output_has_a_stable_shape() {
 
     assert!(output.status.success());
     assert_eq!(
-        support::normalize_budget_json_output(&stdout(&output)),
+        normalize_budget_without_report_summary(&stdout(&output)),
         json!({
             "schemaVersion": "legolas.budget.v1",
             "overallStatus": "Fail",
@@ -173,6 +173,7 @@ fn budget_json_output_includes_workspace_summaries_for_monorepos() {
 
     assert!(output.status.success());
     let budget = support::normalize_budget_json_output(&stdout(&output));
+    assert_eq!(budget["reportSummary"]["language"], json!("ko"));
     assert_eq!(budget["workspaceSummaries"], json!(workspace_summaries()));
     assert_eq!(budget["overallStatus"], json!("Fail"));
 }
@@ -209,7 +210,7 @@ fn budget_uses_config_threshold_overrides_and_starter_fallbacks_together() {
 
     assert!(output.status.success());
     assert_eq!(
-        support::normalize_budget_json_output(&stdout(&output)),
+        normalize_budget_without_report_summary(&stdout(&output)),
         json!({
             "schemaVersion": "legolas.budget.v1",
             "overallStatus": "Fail",
@@ -276,7 +277,7 @@ fn budget_uses_discovered_config_from_project_root() {
 
     assert!(output.status.success());
     assert_eq!(
-        support::normalize_budget_json_output(&stdout(&output)),
+        normalize_budget_without_report_summary(&stdout(&output)),
         json!({
             "schemaVersion": "legolas.budget.v1",
             "overallStatus": "Fail",
@@ -399,4 +400,15 @@ fn budget_rejects_command_specific_numeric_flags() {
         assert_eq!(stdout(&output), "");
         assert_eq!(stderr(&output), expected_stderr);
     }
+}
+
+fn normalize_budget_without_report_summary(output: &str) -> serde_json::Value {
+    let mut budget = support::normalize_budget_json_output(output);
+    assert_eq!(budget["reportSummary"]["language"], json!("ko"));
+    budget
+        .as_object_mut()
+        .expect("budget json object")
+        .remove("reportSummary")
+        .expect("report summary exists");
+    budget
 }

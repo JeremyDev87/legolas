@@ -175,7 +175,7 @@ fn ci_json_output_uses_machine_readable_gate_shape() {
     assert!(!output.status.success());
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
-        support::normalize_ci_json_output(&stdout(&output)),
+        normalize_ci_without_report_summary(&stdout(&output)),
         json!({
             "schemaVersion": "legolas.ci.v1",
             "passed": false,
@@ -231,6 +231,7 @@ fn regression_only_ci_json_includes_regression_envelope() {
     assert_eq!(stderr(&output), "");
 
     let ci = support::normalize_ci_json_output(&stdout(&output));
+    assert_eq!(ci["reportSummary"]["language"], json!("ko"));
     assert_eq!(ci["passed"], json!(true));
     assert_eq!(ci["overallStatus"], json!("Warn"));
     assert_eq!(
@@ -250,6 +251,7 @@ fn ci_json_output_includes_workspace_summaries_for_monorepos() {
     assert!(!output.status.success());
     assert_eq!(output.status.code(), Some(1));
     let ci = support::normalize_ci_json_output(&stdout(&output));
+    assert_eq!(ci["reportSummary"]["language"], json!("ko"));
     assert_eq!(ci["workspaceSummaries"], json!(workspace_summaries()));
     assert_eq!(ci["overallStatus"], json!("Fail"));
     assert_eq!(ci["passed"], json!(false));
@@ -300,6 +302,16 @@ fn ci_rejects_command_specific_numeric_flags() {
         assert_eq!(stdout(&output), "");
         assert_eq!(stderr(&output), expected_stderr);
     }
+}
+
+fn normalize_ci_without_report_summary(output: &str) -> serde_json::Value {
+    let mut ci = support::normalize_ci_json_output(output);
+    assert_eq!(ci["reportSummary"]["language"], json!("ko"));
+    ci.as_object_mut()
+        .expect("ci json object")
+        .remove("reportSummary")
+        .expect("report summary exists");
+    ci
 }
 
 #[test]
