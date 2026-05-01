@@ -245,6 +245,52 @@ fn scan_imports_ignores_import_like_text_inside_statement_regex_after_control_he
 }
 
 #[test]
+fn scan_imports_ignores_import_like_regex_after_regex_condition_with_escaped_parenthesis() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        "if (/\\(/.test(value)) /import(\"chart.js\\/auto\")/.test(value);\n",
+    );
+
+    let files = collect_source_files(root).expect("collect regex condition false-positive files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis = scan_imports(root, &files).expect("scan regex condition false-positive fixture");
+
+    assert!(analysis.by_package.is_empty());
+    assert_eq!(analysis.dynamic_import_count, 0);
+    assert!(analysis.tree_shaking_warnings.is_empty());
+}
+
+#[test]
+fn scan_imports_ignores_import_like_regex_after_control_head_with_comment_parenthesis() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        "if (ok /* ( */) /import(\"chart.js\\/auto\")/.test(value);\n",
+    );
+
+    let files =
+        collect_source_files(root).expect("collect comment parenthesis false-positive files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis =
+        scan_imports(root, &files).expect("scan comment parenthesis false-positive fixture");
+
+    assert!(analysis.by_package.is_empty());
+    assert_eq!(analysis.dynamic_import_count, 0);
+    assert!(analysis.tree_shaking_warnings.is_empty());
+}
+
+#[test]
 fn scan_imports_ignores_import_like_text_inside_statement_regex_after_block_boundaries() {
     let temp = tempdir().expect("create temp dir");
     let root = temp.path();
@@ -637,6 +683,55 @@ fn scan_imports_preserves_dynamic_imports_after_url_template_strings_followed_by
             dynamic_files: vec!["src/App.tsx".to_string()],
         })
     );
+}
+
+#[test]
+fn scan_imports_handles_division_inside_template_interpolation_parenthesized_calls() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        concat!(
+            "export const format = (count: number): string => {\n",
+            "  return `${(Math.floor((count / 1000) * 10) / 10).toLocaleString()}천`;\n",
+            "};\n",
+        ),
+    );
+
+    let files = collect_source_files(root).expect("collect template interpolation division files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis =
+        scan_imports(root, &files).expect("scan template interpolation division fixture");
+
+    assert!(analysis.by_package.is_empty());
+    assert_eq!(analysis.dynamic_import_count, 0);
+    assert!(analysis.tree_shaking_warnings.is_empty());
+}
+
+#[test]
+fn scan_imports_handles_division_after_string_inside_template_interpolation_parentheses() {
+    let temp = tempdir().expect("create temp dir");
+    let root = temp.path();
+
+    write_file(
+        root,
+        "src/App.tsx",
+        "export const value = `${(\"x\".length) / 10}`;\n",
+    );
+
+    let files = collect_source_files(root).expect("collect template string division files");
+
+    assert_eq!(to_posix_paths(root, &files), vec!["src/App.tsx"]);
+
+    let analysis = scan_imports(root, &files).expect("scan template string division fixture");
+
+    assert!(analysis.by_package.is_empty());
+    assert_eq!(analysis.dynamic_import_count, 0);
+    assert!(analysis.tree_shaking_warnings.is_empty());
 }
 
 #[test]
