@@ -1808,8 +1808,27 @@ fn find_matching_open_delimiter_without_nested_lexing(
     let mut index = advance_one(contents, close_index);
 
     while let Some((candidate_index, character)) = contents[..index].char_indices().next_back() {
-        if matches!(character, '\'' | '"' | '`' | '/') {
-            return None;
+        if let Some(comment_start_index) =
+            find_reverse_skippable_comment_start(contents, candidate_index)
+        {
+            index = comment_start_index;
+            continue;
+        }
+
+        if character == '/' {
+            if let Some(regex_start_index) =
+                find_regex_literal_start_for_closing_slash(contents, candidate_index)
+            {
+                index = regex_start_index;
+                continue;
+            }
+        }
+
+        if matches!(character, '\'' | '"' | '`') {
+            let string_start_index =
+                find_reverse_quoted_string_start(contents, candidate_index, character)?;
+            index = string_start_index;
+            continue;
         }
 
         if character == close_character {
@@ -2044,6 +2063,175 @@ fn find_matching_open_delimiter(
     }
 
     None
+}
+
+fn find_reverse_quoted_string_start(
+    contents: &str,
+    closing_quote_index: usize,
+    quote: char,
+) -> Option<usize> {
+    let mut search_index = closing_quote_index;
+
+    while let Some((candidate_index, character)) =
+        contents[..search_index].char_indices().next_back()
+    {
+        if matches!(character, '\n' | '\r') && quote != '`' {
+            return None;
+        }
+
+        if character == quote && !is_escaped_at(contents, candidate_index) {
+            return Some(candidate_index);
+        }
+
+        search_index = candidate_index;
+    }
+
+    None
+}
+
+fn is_escaped_at(contents: &str, index: usize) -> bool {
+    let mut slash_count = 0usize;
+    let mut search_index = index;
+
+    while let Some((candidate_index, character)) =
+        contents[..search_index].char_indices().next_back()
+    {
+        if character != '\\' {
+            break;
+        }
+
+        slash_count += 1;
+        search_index = candidate_index;
+    }
+
+    slash_count % 2 == 1
+}
+
+fn find_reverse_skippable_comment_start(contents: &str, candidate_index: usize) -> Option<usize> {
+    if current_char(contents, candidate_index) == Some('/')
+        && previous_char(contents, candidate_index) == Some('*')
+    {
+        return contents[..candidate_index.saturating_sub(1)].rfind("/*");
+    }
+
+    find_line_comment_start(contents, candidate_index)
+}
+
+fn find_regex_literal_start_for_closing_slash(
+    contents: &str,
+    closing_slash_index: usize,
+) -> Option<usize> {
+    let flags_end_index = skip_regex_flags(contents, advance_one(contents, closing_slash_index))?;
+    if !regex_literal_has_valid_follow(contents, flags_end_index) {
+        return None;
+    }
+
+    let mut search_index = closing_slash_index;
+    while let Some((candidate_index, character)) =
+        contents[..search_index].char_indices().next_back()
+    {
+        if matches!(character, '\n' | '\r') {
+            return None;
+        }
+
+        if character != '/' {
+            search_index = candidate_index;
+            continue;
+        }
+
+        if peek_char(contents, candidate_index + 1).is_some_and(|next| matches!(next, '/' | '*')) {
+            search_index = candidate_index;
+            continue;
+        }
+
+        let Some(parsed_end_index) = skip_regex_literal(contents, candidate_index) else {
+            search_index = candidate_index;
+            continue;
+        };
+
+        if parsed_end_index == flags_end_index
+            && regex_literal_start_context_allows_fast_skip(contents, candidate_index)
+        {
+            return Some(candidate_index);
+        }
+
+        search_index = candidate_index;
+    }
+
+    None
+}
+
+fn skip_regex_flags(contents: &str, start_index: usize) -> Option<usize> {
+    let mut index = start_index;
+    let mut seen_flags = Vec::new();
+
+    while matches!(current_char(contents, index), Some(flag) if is_identifier_character(flag)) {
+        let flag = current_char(contents, index)?;
+        if !is_regex_flag(flag) || seen_flags.contains(&flag) {
+            return None;
+        }
+        seen_flags.push(flag);
+        index = advance_one(contents, index);
+    }
+
+    Some(index)
+}
+
+fn regex_literal_start_context_allows_fast_skip(contents: &str, start_index: usize) -> bool {
+    let Some(previous_index) = find_previous_significant_index(contents, start_index) else {
+        return true;
+    };
+    let Some(previous_character) = current_char(contents, previous_index) else {
+        return true;
+    };
+
+    if matches!(
+        previous_character,
+        '(' | '{'
+            | '['
+            | ','
+            | ';'
+            | ':'
+            | '?'
+            | '!'
+            | '~'
+            | '^'
+            | '&'
+            | '|'
+            | '='
+            | '+'
+            | '-'
+            | '*'
+            | '%'
+            | '<'
+            | '>'
+    ) {
+        return true;
+    }
+
+    if is_identifier_character(previous_character) {
+        return previous_identifier_token(contents, previous_index).is_some_and(|token| {
+            matches!(
+                token,
+                "await"
+                    | "case"
+                    | "do"
+                    | "delete"
+                    | "else"
+                    | "of"
+                    | "in"
+                    | "instanceof"
+                    | "new"
+                    | "return"
+                    | "throw"
+                    | "typeof"
+                    | "void"
+                    | "yield"
+            )
+        });
+    }
+
+    false
 }
 
 fn skip_regex_literal(contents: &str, start_index: usize) -> Option<usize> {
