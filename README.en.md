@@ -48,16 +48,16 @@ The npm package requires Node.js `>=18.17` and ships prebuilt Rust binaries for 
 
 | Command | Purpose | Common options |
 | --- | --- | --- |
-| `scan` | Full analysis report with dependency, lockfile, import, artifact, and boundary findings | `[path]`, `--config`, `--json`, `--sarif`, `--write-baseline`, `--baseline`, `--regression-only` |
-| `visualize` | Text bars for estimated dependency weight and duplicate package pressure | `[path]`, `--config`, `--limit` |
-| `optimize` | Ranked action list with difficulty, confidence, target files, and suggested fixes | `[path]`, `--config`, `--top`, `--json`, `--baseline`, `--regression-only` |
-| `budget` | Evaluates bundle-health budget rules | `[path]`, `--config`, `--json`, `--baseline`, `--regression-only` |
-| `ci` | CI-oriented budget gate that exits with code `1` on failures | `[path]`, `--config`, `--json`, `--sarif`, `--baseline`, `--regression-only` |
+| `scan` | Full analysis report with dependency, lockfile, import, artifact, and boundary findings | `[path]`, `--config`, `--lang ko\|en`, `--json`, `--sarif`, `--write-baseline`, `--baseline`, `--regression-only` |
+| `visualize` | Text bars for estimated dependency weight and duplicate package pressure | `[path]`, `--config`, `--lang ko\|en`, `--limit` |
+| `optimize` | Ranked action list with difficulty, confidence, target files, and suggested fixes | `[path]`, `--config`, `--lang ko\|en`, `--top`, `--json`, `--baseline`, `--regression-only` |
+| `budget` | Evaluates bundle-health budget rules | `[path]`, `--config`, `--lang ko\|en`, `--json`, `--baseline`, `--regression-only` |
+| `ci` | CI-oriented budget gate that exits with code `1` on failures | `[path]`, `--config`, `--lang ko\|en`, `--json`, `--sarif`, `--baseline`, `--regression-only` |
 
-Use `legolas help` for the exact CLI contract.
+Help and text reports default to Korean. Pass `--lang en` for English output. Use `legolas help --lang en` for English command help.
 
 ```bash
-npx @jeremyfellaz/legolas help
+npx @jeremyfellaz/legolas help --lang en
 ```
 
 ## Common Workflows
@@ -65,32 +65,32 @@ npx @jeremyfellaz/legolas help
 Scan an app:
 
 ```bash
-npx @jeremyfellaz/legolas scan ./apps/storefront
+npx @jeremyfellaz/legolas scan ./apps/storefront --lang en
 ```
 
 Get JSON for automation:
 
 ```bash
-npx @jeremyfellaz/legolas scan ./apps/storefront --json
+npx @jeremyfellaz/legolas scan ./apps/storefront --json --lang en
 ```
 
 Upload SARIF from a scan-capable workflow:
 
 ```bash
-npx @jeremyfellaz/legolas scan ./apps/storefront --sarif
+npx @jeremyfellaz/legolas scan ./apps/storefront --sarif --lang en
 ```
 
 Create and compare a baseline:
 
 ```bash
-npx @jeremyfellaz/legolas scan ./apps/storefront --write-baseline ./legolas-baseline.json --json
-npx @jeremyfellaz/legolas scan ./apps/storefront --baseline ./legolas-baseline.json --regression-only --json
+npx @jeremyfellaz/legolas scan ./apps/storefront --write-baseline ./legolas-baseline.json --json --lang en
+npx @jeremyfellaz/legolas scan ./apps/storefront --baseline ./legolas-baseline.json --regression-only --json --lang en
 ```
 
 Fail CI on budget regressions:
 
 ```bash
-npx @jeremyfellaz/legolas ci ./apps/storefront --baseline ./legolas-baseline.json --regression-only --sarif
+npx @jeremyfellaz/legolas ci ./apps/storefront --baseline ./legolas-baseline.json --regression-only --sarif --lang en
 ```
 
 ## Configuration
@@ -139,11 +139,13 @@ Source scanning also honors the project's `.gitignore` and root `.legolasignore`
 - `ci --json` emits `legolas.ci.v1`, documented by [docs/schema/ci.v1.schema.json](./docs/schema/ci.v1.schema.json).
 - `scan --sarif` and `ci --sarif` emit SARIF `2.1.0`, documented by [docs/schema/sarif.v1.json](./docs/schema/sarif.v1.json).
 
+JSON output includes a top-level `reportSummary`. SARIF output carries the same summary at `runs[0].properties.reportSummary`. The summary includes `language`, `verdictKey`, `confirmedInitialPayloadKbSaved`, `directionalOpportunityKb`, `estimatedLcpImprovementMs`, and `topActions`.
+
 `--json` and `--sarif` are mutually exclusive. `ci` returns a non-zero exit code when budget rules fail.
 
 ## Example Output
 
-`scan` summarizes the project, impact estimate, evidence, and finding groups:
+Use `--lang en` when you want English human-readable output. `scan` summarizes the project, verdict, confirmed initial payload savings, directional cleanup opportunity, next actions, evidence, and finding groups:
 
 ```text
 Legolas scan for basic-parity-app
@@ -153,14 +155,23 @@ Frameworks: Vite, React
 Package manager: pnpm
 Scanned 1 source files and 4 imported packages
 
-Potential payload reduction: ~366 KB
-Estimated LCP improvement: ~769 ms
-High impact: the project has clear opportunities to reduce initial payload size.
+Verdict: high impact
+Confirmed initial payload savings: ~348 KB (estimated LCP improvement ~731 ms)
+Directional cleanup opportunity: ~366 KB
+
+Top next actions:
+1. Review chart.js upfront bundle weight [hard | high confidence | ~160 KB]
+   recommended fix: lazy-load - Register only the chart primitives you use and lazy load dashboard surfaces.
+   targets: src/Dashboard.tsx
+   evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
+2. Lazy load chart.js [medium | low confidence | ~120 KB]
+   evidence: src/Dashboard.tsx | specifier: chart.js | route-like UI surface matched `dashboard` keyword
 
 Heaviest known dependencies:
 - chart.js (160 KB) [high confidence]: Charting code is often only needed on a subset of screens. imported in 1 file(s).
-  evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
 ```
+
+`Confirmed initial payload savings` sums only findings with source-import or artifact evidence for initial payload impact. `Directional cleanup opportunity` also includes dependency hygiene signals such as lockfile duplication. Development/test-only duplicates are presented as cleanup work, not as LCP improvement.
 
 `optimize` turns findings into ranked actions:
 
@@ -181,7 +192,7 @@ Legolas budget for basic-parity-app
 Overall status: Fail
 
 Rule results:
-- potentialKbSaved: Fail (actual: 366, warnAt: 40, failAt: 80)
+- potentialKbSaved: Fail (actual: 348, warnAt: 40, failAt: 80)
 - duplicatePackageCount: Pass (actual: 1, warnAt: 2, failAt: 4)
 - dynamicImportCount: Fail (actual: 0, warnAt: 1, failAt: 0)
 ```

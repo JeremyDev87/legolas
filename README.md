@@ -48,13 +48,13 @@ npm 패키지는 Node.js `>=18.17`을 요구합니다. 포함된 Rust 바이너�
 
 | 명령어 | 용도 | 자주 쓰는 옵션 |
 | --- | --- | --- |
-| `scan` | 의존성, 잠금 파일, 가져오기, 산출물, 경계 경고를 포함한 전체 분석 보고서 | `[path]`, `--config`, `--json`, `--sarif`, `--write-baseline`, `--baseline`, `--regression-only` |
-| `visualize` | 추정 의존성 무게와 중복 패키지 압력을 텍스트 막대로 표시 | `[path]`, `--config`, `--limit` |
-| `optimize` | 난이도, 신뢰도, 대상 파일, 권장 수정안을 포함한 우선순위 작업 목록 | `[path]`, `--config`, `--top`, `--json`, `--baseline`, `--regression-only` |
-| `budget` | 번들 상태 예산 규칙 평가 | `[path]`, `--config`, `--json`, `--baseline`, `--regression-only` |
-| `ci` | 예산 실패 시 종료 코드 `1`을 반환하는 CI용 게이트 | `[path]`, `--config`, `--json`, `--sarif`, `--baseline`, `--regression-only` |
+| `scan` | 의존성, 잠금 파일, 가져오기, 산출물, 경계 경고를 포함한 전체 분석 보고서 | `[path]`, `--config`, `--lang ko\|en`, `--json`, `--sarif`, `--write-baseline`, `--baseline`, `--regression-only` |
+| `visualize` | 추정 의존성 무게와 중복 패키지 압력을 텍스트 막대로 표시 | `[path]`, `--config`, `--lang ko\|en`, `--limit` |
+| `optimize` | 난이도, 신뢰도, 대상 파일, 권장 수정안을 포함한 우선순위 작업 목록 | `[path]`, `--config`, `--lang ko\|en`, `--top`, `--json`, `--baseline`, `--regression-only` |
+| `budget` | 번들 상태 예산 규칙 평가 | `[path]`, `--config`, `--lang ko\|en`, `--json`, `--baseline`, `--regression-only` |
+| `ci` | 예산 실패 시 종료 코드 `1`을 반환하는 CI용 게이트 | `[path]`, `--config`, `--lang ko\|en`, `--json`, `--sarif`, `--baseline`, `--regression-only` |
 
-정확한 CLI 계약은 `legolas help`로 확인할 수 있습니다.
+기본 도움말과 텍스트 리포트 언어는 한국어입니다. 영어 출력이 필요하면 `--lang en`을 사용하세요. 정확한 CLI 계약은 `legolas help`로 확인할 수 있습니다.
 
 ```bash
 npx @jeremyfellaz/legolas help
@@ -139,39 +139,49 @@ Legolas는 프로젝트 루트의 `legolas.config.json`을 자동으로 찾습�
 - `ci --json`은 [docs/schema/ci.v1.schema.json](./docs/schema/ci.v1.schema.json)에 문서화된 `legolas.ci.v1`을 출력합니다.
 - `scan --sarif`와 `ci --sarif`는 [docs/schema/sarif.v1.json](./docs/schema/sarif.v1.json)에 문서화된 SARIF `2.1.0`을 출력합니다.
 
+JSON 출력은 top-level `reportSummary`를 포함합니다. SARIF 출력은 `runs[0].properties.reportSummary`에 같은 요약을 담습니다. 이 summary에는 `language`, `verdictKey`, `confirmedInitialPayloadKbSaved`, `directionalOpportunityKb`, `estimatedLcpImprovementMs`, `topActions`가 포함됩니다.
+
 `--json`과 `--sarif`는 함께 사용할 수 없습니다. `ci`는 예산 규칙 실패 시 0이 아닌 종료 코드를 반환합니다.
 
 ## 결과 예시
 
-아래 블록은 실제 CLI 출력 예시이므로 영어 원문을 유지합니다.
-
-`scan`은 프로젝트 요약, 영향 추정치, 증거, 발견 항목 그룹을 보여줍니다.
+`scan`은 프로젝트 요약, 판정, 확정 초기 페이로드 절감, 방향성 정리 여지, 다음 작업, 증거, 발견 항목 그룹을 보여줍니다.
 
 ```text
 Legolas scan for basic-parity-app
-Project root: <PROJECT_ROOT>
-Mode: heuristic
-Frameworks: Vite, React
-Package manager: pnpm
-Scanned 1 source files and 4 imported packages
+프로젝트 루트: <PROJECT_ROOT>
+모드: heuristic
+프레임워크: Vite, React
+패키지 매니저: pnpm
+스캔: 소스 파일 1개, import 패키지 4개
 
-Potential payload reduction: ~366 KB
-Estimated LCP improvement: ~769 ms
-High impact: the project has clear opportunities to reduce initial payload size.
+판정: 큰 폭 절감 가능
+확정 초기 페이로드 절감: 약 348 KB (LCP 약 731 ms 개선 추정)
+방향성 정리 여지: 약 366 KB
 
-Heaviest known dependencies:
-- chart.js (160 KB) [high confidence]: Charting code is often only needed on a subset of screens. imported in 1 file(s).
-  evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
+Top next actions:
+1. chart.js 초기 번들 무게 검토 [난이도: 어려움 | 신뢰도: 높음 | ~160 KB]
+   권장 수정: lazy-load - Register only the chart primitives you use and lazy load dashboard surfaces.
+   대상: src/Dashboard.tsx
+   evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
+2. chart.js 지연 로딩 [난이도: 보통 | 신뢰도: 낮음 | ~120 KB]
+   evidence: src/Dashboard.tsx | specifier: chart.js | route-like UI surface matched `dashboard` keyword
+
+가장 무거운 의존성:
+- chart.js (160 KB) [높음 신뢰도]: Charting code is often only needed on a subset of screens. 1개 파일에서 import됨.
 ```
+
+`확정 초기 페이로드 절감`은 소스 import나 산출물 증거로 초기 번들 영향이 확인된 항목만 합산합니다. `방향성 정리 여지`는 lockfile 중복 같은 dependency hygiene 신호까지 포함합니다. 개발/테스트 전용 중복은 LCP 개선치가 아니라 정리 후보로 표시됩니다.
 
 `optimize`는 발견 항목을 우선순위 작업으로 바꿉니다.
 
 ```text
 Legolas optimize for basic-parity-app
 
-1. Review chart.js upfront bundle weight [hard | high confidence | ~160 KB]
-   recommended fix: lazy-load - Register only the chart primitives you use and lazy load dashboard surfaces.
-   targets: src/Dashboard.tsx
+Top next actions:
+1. chart.js 초기 번들 무게 검토 [난이도: 어려움 | 신뢰도: 높음 | ~160 KB]
+   권장 수정: lazy-load - Register only the chart primitives you use and lazy load dashboard surfaces.
+   대상: src/Dashboard.tsx
    evidence: src/Dashboard.tsx | specifier: chart.js | static import; Charting code is often only needed on a subset of screens.
 ```
 
@@ -180,10 +190,10 @@ Legolas optimize for basic-parity-app
 ```text
 Legolas budget for basic-parity-app
 
-Overall status: Fail
+전체 상태: Fail
 
-Rule results:
-- potentialKbSaved: Fail (actual: 366, warnAt: 40, failAt: 80)
+규칙 결과:
+- potentialKbSaved: Fail (actual: 348, warnAt: 40, failAt: 80)
 - duplicatePackageCount: Pass (actual: 1, warnAt: 2, failAt: 4)
 - dynamicImportCount: Fail (actual: 0, warnAt: 1, failAt: 0)
 ```
