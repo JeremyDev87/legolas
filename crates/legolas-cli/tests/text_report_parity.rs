@@ -403,7 +403,7 @@ fn english_scan_report_renders_dev_only_duplicates_as_dependency_hygiene() {
 }
 
 #[test]
-fn scan_report_confirms_production_likely_duplicate_savings_without_other_findings() {
+fn scan_report_frames_production_likely_duplicate_pressure_as_directional() {
     let mut analysis = base_analysis("production-duplicate-app");
     analysis.duplicate_packages = vec![DuplicatePackage {
         name: "lodash".to_string(),
@@ -427,7 +427,11 @@ fn scan_report_confirms_production_likely_duplicate_savings_without_other_findin
     assert!(ko_report.contains("초기 페이로드 절감 후보"));
     assert!(en_report.contains("Confirmed initial payload savings: not confirmed"));
     assert!(!en_report.contains("Confirmed initial payload savings: ~48 KB"));
-    assert!(en_report.contains("initial payload candidate"));
+    assert!(en_report.contains("directional initial payload cleanup candidate"));
+    assert!(en_report.contains(
+        "Review lodash duplicate dependency pressure (4.17.20, 4.17.21) [medium | high confidence | ~48 KB]"
+    ));
+    assert!(!en_report.contains("to recover roughly 48 KB"));
 }
 
 #[test]
