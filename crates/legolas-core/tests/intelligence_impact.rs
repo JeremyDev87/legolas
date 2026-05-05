@@ -167,7 +167,7 @@ fn estimate_impact_excludes_non_production_duplicate_savings_from_initial_payloa
 }
 
 #[test]
-fn report_summary_separates_confirmed_initial_payload_from_directional_duplicate_opportunity() {
+fn report_summary_excludes_lockfile_duplicates_from_confirmed_initial_payload() {
     let mut production_duplicate =
         duplicate_package_with_scope(50, DuplicateImpactScope::ProductionLikely);
     production_duplicate.finding = FindingMetadata::new(
@@ -197,18 +197,27 @@ fn report_summary_separates_confirmed_initial_payload_from_directional_duplicate
 
     let summary = build_report_summary(&analysis);
 
-    assert_eq!(summary.verdict_key, "targeted-impact");
+    assert_eq!(summary.verdict_key, "low-impact");
     assert_eq!(
         summary.text_source.title_key,
-        "report.summary.targeted-impact.title"
+        "report.summary.low-impact.title"
     );
-    assert_eq!(summary.confirmed_initial_payload_kb_saved, 50);
+    assert_eq!(summary.confirmed_initial_payload_kb_saved, 0);
     assert_eq!(summary.directional_opportunity_kb, 80);
-    assert_eq!(summary.estimated_lcp_improvement_ms, 105);
+    assert_eq!(summary.estimated_lcp_improvement_ms, 0);
     assert_eq!(summary.top_actions.len(), 2);
     assert_eq!(
         summary.top_actions[0].finding_id,
         "duplicate-package:prod-shared"
+    );
+    assert_eq!(
+        summary
+            .group_summaries
+            .iter()
+            .find(|group| group.key == "duplicate-packages")
+            .expect("duplicate group summary")
+            .confirmed_initial_payload_kb_saved,
+        0
     );
     assert_eq!(
         summary

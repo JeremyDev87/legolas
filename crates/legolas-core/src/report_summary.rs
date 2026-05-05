@@ -1,5 +1,6 @@
 use crate::{
     action_plan::rank_actions,
+    findings::FindingAnalysisSource,
     models::{
         Analysis, DuplicateImpactScope, ReportSummary, ReportSummaryAction,
         ReportSummaryGroupSummary, ReportSummaryTextSource,
@@ -53,7 +54,10 @@ fn build_group_summaries(analysis: &Analysis) -> Vec<ReportSummaryGroupSummary> 
     let production_duplicate_kb = analysis
         .duplicate_packages
         .iter()
-        .filter(|item| item.impact_scope == DuplicateImpactScope::ProductionLikely)
+        .filter(|item| {
+            item.impact_scope == DuplicateImpactScope::ProductionLikely
+                && confirms_initial_payload_savings(item.finding.analysis_source)
+        })
         .map(|item| item.estimated_extra_kb)
         .sum();
     let all_duplicate_kb = analysis
@@ -98,6 +102,17 @@ fn build_group_summaries(analysis: &Analysis) -> Vec<ReportSummaryGroupSummary> 
             tree_shaking_kb,
         ),
     ]
+}
+
+fn confirms_initial_payload_savings(analysis_source: Option<FindingAnalysisSource>) -> bool {
+    matches!(
+        analysis_source,
+        Some(
+            FindingAnalysisSource::SourceImport
+                | FindingAnalysisSource::Artifact
+                | FindingAnalysisSource::ArtifactSource
+        )
+    )
 }
 
 fn group_summary(
