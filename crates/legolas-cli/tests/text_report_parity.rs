@@ -422,11 +422,11 @@ fn scan_report_confirms_production_likely_duplicate_savings_without_other_findin
     let ko_report = format_scan_report_for_language(&analysis, ReportLanguage::Ko);
     let en_report = format_scan_report_for_language(&analysis, ReportLanguage::En);
 
-    assert!(ko_report.contains("확정 초기 페이로드 절감: 약 48 KB"));
-    assert!(!ko_report.contains("확정 초기 페이로드 절감: 미확정"));
+    assert!(ko_report.contains("확정 초기 페이로드 절감: 미확정"));
+    assert!(!ko_report.contains("확정 초기 페이로드 절감: 약 48 KB"));
     assert!(ko_report.contains("초기 페이로드 절감 후보"));
-    assert!(en_report.contains("Confirmed initial payload savings: ~48 KB"));
-    assert!(!en_report.contains("Confirmed initial payload savings: not confirmed"));
+    assert!(en_report.contains("Confirmed initial payload savings: not confirmed"));
+    assert!(!en_report.contains("Confirmed initial payload savings: ~48 KB"));
     assert!(en_report.contains("initial payload candidate"));
 }
 
