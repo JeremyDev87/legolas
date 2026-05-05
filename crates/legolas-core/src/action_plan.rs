@@ -7,8 +7,8 @@ use crate::{
         subpath_import_fix_hint,
     },
     models::{
-        ActionDifficulty, ActionPlanItem, Analysis, DuplicatePackage, HeavyDependency,
-        LazyLoadCandidate, RecommendedFix, TreeShakingWarning,
+        ActionDifficulty, ActionPlanItem, Analysis, DuplicateImpactScope, DuplicatePackage,
+        HeavyDependency, LazyLoadCandidate, RecommendedFix, TreeShakingWarning,
     },
 };
 
@@ -18,6 +18,7 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
     for item in &analysis.heavy_dependencies {
         push_action(
             &mut actions,
+            ActionRankBucket::SourceOrArtifactPerformance,
             &item.finding,
             item.estimated_kb,
             ActionDifficulty::Hard,
@@ -28,6 +29,7 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
     for item in &analysis.lazy_load_candidates {
         push_action(
             &mut actions,
+            ActionRankBucket::SourceOrArtifactPerformance,
             &item.finding,
             item.estimated_savings_kb,
             ActionDifficulty::Medium,
@@ -38,6 +40,7 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
     for item in &analysis.tree_shaking_warnings {
         push_action(
             &mut actions,
+            ActionRankBucket::SourceOrArtifactPerformance,
             &item.finding,
             item.estimated_kb,
             ActionDifficulty::Easy,
@@ -48,6 +51,7 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
     for item in &analysis.duplicate_packages {
         push_action(
             &mut actions,
+            duplicate_action_bucket(item.impact_scope),
             &item.finding,
             item.estimated_extra_kb,
             ActionDifficulty::Medium,
@@ -56,17 +60,23 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
     }
 
     actions.sort_by(|left, right| {
-        right
-            .estimated_savings_kb
-            .cmp(&left.estimated_savings_kb)
-            .then(right.confidence.cmp(&left.confidence))
-            .then(left.difficulty.cmp(&right.difficulty))
-            .then(left.finding_id.cmp(&right.finding_id))
+        left.bucket
+            .cmp(&right.bucket)
+            .then(
+                right
+                    .item
+                    .estimated_savings_kb
+                    .cmp(&left.item.estimated_savings_kb),
+            )
+            .then(right.item.confidence.cmp(&left.item.confidence))
+            .then(left.item.difficulty.cmp(&right.item.difficulty))
+            .then(left.item.finding_id.cmp(&right.item.finding_id))
     });
 
     let mut seen = BTreeSet::new();
     let mut ranked = actions
         .into_iter()
+        .map(|ranked| ranked.item)
         .filter(|item| seen.insert(item.finding_id.clone()))
         .collect::<Vec<_>>();
 
@@ -75,6 +85,28 @@ pub fn rank_actions(analysis: &Analysis) -> Vec<ActionPlanItem> {
     }
 
     ranked
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ActionRankBucket {
+    SourceOrArtifactPerformance,
+    ProductionLikelyDuplicate,
+    UnknownDuplicate,
+    DevOnlyDuplicate,
+}
+
+#[derive(Debug, Clone)]
+struct RankedAction {
+    bucket: ActionRankBucket,
+    item: ActionPlanItem,
+}
+
+fn duplicate_action_bucket(impact_scope: DuplicateImpactScope) -> ActionRankBucket {
+    match impact_scope {
+        DuplicateImpactScope::ProductionLikely => ActionRankBucket::ProductionLikelyDuplicate,
+        DuplicateImpactScope::Unknown => ActionRankBucket::UnknownDuplicate,
+        DuplicateImpactScope::DevOnly => ActionRankBucket::DevOnlyDuplicate,
+    }
 }
 
 pub fn apply_action_plan(analysis: &mut Analysis) -> Vec<ActionPlanItem> {
@@ -101,7 +133,8 @@ pub fn apply_action_plan(analysis: &mut Analysis) -> Vec<ActionPlanItem> {
 }
 
 fn push_action(
-    actions: &mut Vec<ActionPlanItem>,
+    actions: &mut Vec<RankedAction>,
+    bucket: ActionRankBucket,
     finding: &FindingMetadata,
     estimated_savings_kb: usize,
     difficulty: ActionDifficulty,
@@ -111,13 +144,16 @@ fn push_action(
         return;
     };
 
-    actions.push(ActionPlanItem {
-        action_priority: 0,
-        finding_id,
-        estimated_savings_kb,
-        confidence: finding.confidence.unwrap_or(FindingConfidence::Low),
-        difficulty,
-        recommended_fix,
+    actions.push(RankedAction {
+        bucket,
+        item: ActionPlanItem {
+            action_priority: 0,
+            finding_id,
+            estimated_savings_kb,
+            confidence: finding.confidence.unwrap_or(FindingConfidence::Low),
+            difficulty,
+            recommended_fix,
+        },
     });
 }
 
@@ -180,10 +216,40 @@ fn tree_shaking_fix(item: &TreeShakingWarning) -> Option<RecommendedFix> {
 }
 
 fn duplicate_package_fix(item: &DuplicatePackage) -> Option<RecommendedFix> {
+    if item.impact_scope == DuplicateImpactScope::DevOnly || !versions_share_major(&item.versions) {
+        return None;
+    }
+
     dedupe_resolution_fix_hint(
         &item.finding,
         format!("Deduplicate {} to one installed version.", item.name),
     )
+}
+
+fn versions_share_major(versions: &[String]) -> bool {
+    if versions.len() < 2 {
+        return false;
+    }
+
+    let Some(first_major) = versions.first().and_then(|version| major_version(version)) else {
+        return false;
+    };
+
+    versions
+        .iter()
+        .skip(1)
+        .all(|version| major_version(version) == Some(first_major))
+}
+
+fn major_version(version: &str) -> Option<u64> {
+    let normalized = version.trim().trim_start_matches('v');
+    let major = normalized.split(['.', '-', '+']).next()?;
+
+    if major.is_empty() || !major.chars().all(|character| character.is_ascii_digit()) {
+        return None;
+    }
+
+    major.parse().ok()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

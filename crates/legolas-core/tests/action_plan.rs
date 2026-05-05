@@ -1,7 +1,7 @@
 use legolas_core::{
-    apply_action_plan, rank_actions, ActionDifficulty, Analysis, DuplicatePackage,
-    FindingAnalysisSource, FindingConfidence, FindingMetadata, HeavyDependency, LazyLoadCandidate,
-    RecommendedFix, TreeShakingWarning,
+    apply_action_plan, rank_actions, ActionDifficulty, Analysis, DuplicateImpactScope,
+    DuplicatePackage, FindingAnalysisSource, FindingConfidence, FindingMetadata, HeavyDependency,
+    LazyLoadCandidate, RecommendedFix, TreeShakingWarning,
 };
 use serde_json::json;
 
@@ -51,32 +51,83 @@ fn rank_actions_sorts_by_savings_confidence_and_difficulty() {
         vec![
             (
                 1,
-                "duplicate-package:low-medium",
-                150,
-                FindingConfidence::Low,
-                ActionDifficulty::Medium,
-            ),
-            (
-                2,
                 "tree-shaking:high-easy",
                 100,
                 FindingConfidence::High,
                 ActionDifficulty::Easy,
             ),
             (
-                3,
+                2,
                 "lazy-load:high-medium",
                 100,
                 FindingConfidence::High,
                 ActionDifficulty::Medium,
             ),
             (
-                4,
+                3,
                 "heavy-dependency:medium-hard",
                 100,
                 FindingConfidence::Medium,
                 ActionDifficulty::Hard,
             ),
+            (
+                4,
+                "duplicate-package:low-medium",
+                150,
+                FindingConfidence::Low,
+                ActionDifficulty::Medium,
+            ),
+        ]
+    );
+}
+
+#[test]
+fn rank_actions_prioritizes_source_work_before_duplicate_hygiene_buckets() {
+    let analysis = Analysis {
+        tree_shaking_warnings: vec![tree_shaking_warning(
+            "tree-shaking:lodash-root-import",
+            "lodash",
+            100,
+            FindingConfidence::High,
+        )],
+        duplicate_packages: vec![
+            duplicate_package_with_scope(
+                "duplicate-package:dev-only",
+                "eslint-visitor-keys",
+                150,
+                FindingConfidence::High,
+                DuplicateImpactScope::DevOnly,
+            ),
+            duplicate_package_with_scope(
+                "duplicate-package:unknown",
+                "ansi-styles",
+                120,
+                FindingConfidence::High,
+                DuplicateImpactScope::Unknown,
+            ),
+            duplicate_package_with_scope(
+                "duplicate-package:production",
+                "react",
+                40,
+                FindingConfidence::Low,
+                DuplicateImpactScope::ProductionLikely,
+            ),
+        ],
+        ..Default::default()
+    };
+
+    let actions = rank_actions(&analysis);
+
+    assert_eq!(
+        actions
+            .iter()
+            .map(|item| item.finding_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "tree-shaking:lodash-root-import",
+            "duplicate-package:production",
+            "duplicate-package:unknown",
+            "duplicate-package:dev-only",
         ]
     );
 }
@@ -309,6 +360,62 @@ fn apply_action_plan_only_exposes_safe_fix_hints_for_high_confidence_findings() 
 }
 
 #[test]
+fn duplicate_package_fix_hint_requires_same_major_and_not_dev_only() {
+    let mut analysis = Analysis {
+        duplicate_packages: vec![
+            duplicate_package_with_versions_and_scope(
+                "duplicate-package:major-mismatch",
+                "react",
+                36,
+                FindingConfidence::High,
+                &["17.0.2", "18.2.0"],
+                DuplicateImpactScope::ProductionLikely,
+            ),
+            duplicate_package_with_versions_and_scope(
+                "duplicate-package:same-major",
+                "lodash",
+                18,
+                FindingConfidence::High,
+                &["4.17.20", "4.17.21"],
+                DuplicateImpactScope::Unknown,
+            ),
+            duplicate_package_with_versions_and_scope(
+                "duplicate-package:dev-only",
+                "eslint-visitor-keys",
+                18,
+                FindingConfidence::High,
+                &["3.3.0", "3.4.0"],
+                DuplicateImpactScope::DevOnly,
+            ),
+        ],
+        ..Default::default()
+    };
+
+    apply_action_plan(&mut analysis);
+
+    let major_mismatch = &analysis.duplicate_packages[0].finding.recommended_fix;
+    assert_ne!(
+        major_mismatch.as_ref().map(|fix| fix.kind.as_str()),
+        Some("dedupe-package")
+    );
+
+    assert_eq!(
+        analysis.duplicate_packages[1]
+            .finding
+            .recommended_fix
+            .as_ref()
+            .map(|fix| fix.kind.as_str()),
+        Some("dedupe-package")
+    );
+
+    let dev_only = &analysis.duplicate_packages[2].finding.recommended_fix;
+    assert_ne!(
+        dev_only.as_ref().map(|fix| fix.kind.as_str()),
+        Some("dedupe-package")
+    );
+}
+
+#[test]
 fn apply_action_plan_clears_stale_metadata_before_reapplying() {
     let mut analysis = Analysis {
         tree_shaking_warnings: vec![tree_shaking_warning(
@@ -448,9 +555,49 @@ fn duplicate_package(
     estimated_extra_kb: usize,
     confidence: FindingConfidence,
 ) -> DuplicatePackage {
+    duplicate_package_with_scope(
+        finding_id,
+        name,
+        estimated_extra_kb,
+        confidence,
+        DuplicateImpactScope::Unknown,
+    )
+}
+
+fn duplicate_package_with_scope(
+    finding_id: &str,
+    name: &str,
+    estimated_extra_kb: usize,
+    confidence: FindingConfidence,
+    impact_scope: DuplicateImpactScope,
+) -> DuplicatePackage {
+    duplicate_package_with_versions_and_scope(
+        finding_id,
+        name,
+        estimated_extra_kb,
+        confidence,
+        &["1.0.0", "1.1.0"],
+        impact_scope,
+    )
+}
+
+fn duplicate_package_with_versions_and_scope(
+    finding_id: &str,
+    name: &str,
+    estimated_extra_kb: usize,
+    confidence: FindingConfidence,
+    versions: &[&str],
+    impact_scope: DuplicateImpactScope,
+) -> DuplicatePackage {
     DuplicatePackage {
         name: name.to_string(),
+        versions: versions
+            .iter()
+            .map(|version| (*version).to_string())
+            .collect(),
+        count: versions.len(),
         estimated_extra_kb,
+        impact_scope,
         finding: finding(finding_id, confidence),
         ..Default::default()
     }
