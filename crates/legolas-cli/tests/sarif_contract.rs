@@ -105,6 +105,10 @@ fn scan_sarif_preserves_rule_ids_locations_and_metadata() {
         .iter()
         .find(|result| result["ruleId"] == "duplicate-package:lodash")
         .expect("duplicate result");
+    assert_eq!(
+        duplicate["message"]["text"],
+        json!("lodash 중복 버전 4.17.20, 4.17.21 (방향성 정리 후보 18 KB)")
+    );
     assert!(duplicate.get("locations").is_none());
     assert_eq!(
         duplicate["properties"]["analysisSource"],
@@ -115,6 +119,27 @@ fn scan_sarif_preserves_rule_ids_locations_and_metadata() {
     assert_eq!(
         duplicate["properties"]["recommendedFix"]["kind"],
         json!("dedupe-package")
+    );
+    let duplicate_property_keys = duplicate["properties"]
+        .as_object()
+        .expect("duplicate properties")
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        duplicate_property_keys,
+        BTreeSet::from([
+            "actionPriority".to_string(),
+            "analysisSource".to_string(),
+            "confidence".to_string(),
+            "count".to_string(),
+            "estimatedExtraKb".to_string(),
+            "evidence".to_string(),
+            "name".to_string(),
+            "origins".to_string(),
+            "recommendedFix".to_string(),
+            "versions".to_string(),
+        ])
     );
 }
 
@@ -164,6 +189,21 @@ fn scan_sarif_language_flag_changes_human_text_not_rule_ids() {
         chart_js_rule["shortDescription"]["text"],
         json!("Review chart.js upfront bundle weight")
     );
+
+    let duplicate = en_results
+        .iter()
+        .find(|result| result["ruleId"] == "duplicate-package:lodash")
+        .expect("duplicate result");
+    let duplicate_message = duplicate["message"]["text"]
+        .as_str()
+        .expect("duplicate message");
+    assert_eq!(
+        duplicate_message,
+        "lodash duplicated across 4.17.20, 4.17.21 (18 KB duplicate dependency pressure)"
+    );
+    assert!(!duplicate_message.contains("avoidable"));
+    assert!(!duplicate_message.contains("payload"));
+    assert!(!duplicate_message.contains("savings"));
 }
 
 #[test]

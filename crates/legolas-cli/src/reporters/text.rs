@@ -1287,7 +1287,7 @@ fn duplicate_scope_summary_ko(scope: DuplicateImpactScope) -> &'static str {
 
 fn duplicate_scope_summary_en(scope: DuplicateImpactScope) -> &'static str {
     match scope {
-        DuplicateImpactScope::ProductionLikely => "initial payload candidate",
+        DuplicateImpactScope::ProductionLikely => "directional initial payload cleanup candidate",
         DuplicateImpactScope::DevOnly => {
             "development/test dependency duplication, dependency hygiene"
         }
@@ -1305,8 +1305,13 @@ fn duplicate_context_headline(
             duplicate.name,
             duplicate.versions.join(", ")
         ),
-        (ReportLanguage::Ko, _) => format!(
-            "{} 버전 중복 정리 ({})",
+        (ReportLanguage::Ko, DuplicateImpactScope::ProductionLikely) => format!(
+            "{} 방향성 중복 정리 후보 ({})",
+            duplicate.name,
+            duplicate.versions.join(", ")
+        ),
+        (ReportLanguage::Ko, DuplicateImpactScope::Unknown) => format!(
+            "{} 방향성 중복 정리 검토 ({})",
             duplicate.name,
             duplicate.versions.join(", ")
         ),
@@ -1315,8 +1320,13 @@ fn duplicate_context_headline(
             duplicate.name,
             duplicate.versions.join(", ")
         ),
-        (ReportLanguage::En, _) => format!(
-            "Deduplicate {} versions ({})",
+        (ReportLanguage::En, DuplicateImpactScope::ProductionLikely) => format!(
+            "Review {} duplicate dependency pressure ({})",
+            duplicate.name,
+            duplicate.versions.join(", ")
+        ),
+        (ReportLanguage::En, DuplicateImpactScope::Unknown) => format!(
+            "Review {} directional duplicate cleanup ({})",
             duplicate.name,
             duplicate.versions.join(", ")
         ),
@@ -1347,7 +1357,7 @@ fn duplicate_action_headline(
             duplicate.estimated_extra_kb
         ),
         (ReportLanguage::En, _) => format!(
-            "Deduplicate {} versions ({}) to recover roughly {} KB.",
+            "Review {} duplicate versions ({}) as a directional cleanup candidate for roughly {} KB of dependency pressure.",
             duplicate.name,
             duplicate.versions.join(", "),
             duplicate.estimated_extra_kb

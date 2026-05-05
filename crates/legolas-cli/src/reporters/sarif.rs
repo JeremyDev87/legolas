@@ -165,13 +165,13 @@ fn duplicate_package_record(
         &item.finding,
         match language {
             ReportLanguage::Ko => format!(
-                "{} 중복 버전 {} (정리 가능 {} KB)",
+                "{} 중복 버전 {} (방향성 정리 후보 {} KB)",
                 item.name,
                 item.versions.join(", "),
                 item.estimated_extra_kb
             ),
             ReportLanguage::En => format!(
-                "{} duplicated across {} ({} KB avoidable)",
+                "{} duplicated across {} ({} KB duplicate dependency pressure)",
                 item.name,
                 item.versions.join(", "),
                 item.estimated_extra_kb
