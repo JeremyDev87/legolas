@@ -171,7 +171,7 @@ Top next actions:
 - chart.js (160 KB) [높음 신뢰도]: Charting code is often only needed on a subset of screens. 1개 파일에서 import됨.
 ```
 
-`확정 초기 페이로드 절감`은 소스 import나 산출물 증거로 초기 번들 영향이 확인된 항목만 합산합니다. `방향성 정리 여지`는 lockfile 중복 같은 dependency hygiene 신호까지 포함합니다. 개발/테스트 전용 중복은 LCP 개선치가 아니라 정리 후보로 표시됩니다.
+`확정 초기 페이로드 절감`은 소스 import 또는 번들 산출물 증거로 초기 페이로드 영향이 확인된 항목만 합산합니다. Lockfile-only 중복은 이 confirmed/LCP 수치에 포함하지 않고 `방향성 정리 여지`의 dependency hygiene 신호로만 다룹니다. 개발/테스트 전용 중복도 LCP 개선치가 아니라 dependency hygiene 정리 작업으로 표시됩니다.
 
 `optimize`는 발견 항목을 우선순위 작업으로 바꿉니다.
 
