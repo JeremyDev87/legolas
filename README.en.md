@@ -171,7 +171,7 @@ Heaviest known dependencies:
 - chart.js (160 KB) [high confidence]: Charting code is often only needed on a subset of screens. imported in 1 file(s).
 ```
 
-`Confirmed initial payload savings` sums only findings with source-import or artifact evidence for initial payload impact. `Directional cleanup opportunity` also includes dependency hygiene signals such as lockfile duplication. Development/test-only duplicates are presented as cleanup work, not as LCP improvement.
+`Confirmed initial payload savings` sums only findings with source-import or bundle-artifact evidence for initial payload impact. Lockfile-only duplication is not counted in that confirmed/LCP number; it is treated as a `Directional cleanup opportunity` dependency-hygiene signal. Development/test-only duplicates are also presented as dependency-hygiene cleanup work, not as LCP improvement.
 
 `optimize` turns findings into ranked actions:
 
