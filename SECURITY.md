@@ -2,8 +2,13 @@
 
 ## Supported Versions
 
-Legolas is in early development. Security fixes are applied to the latest
-version on the default branch.
+Until v1.0.0 is released, security fixes are applied to the latest npm release
+on npm's `latest` dist-tag and the default branch.
+
+After the v1.0.0 release, the supported line is the latest supported `1.x` npm
+release on npm's `latest` dist-tag and the default branch. Older pre-1.0
+releases are not backported unless a maintainer announces a specific exception
+in the release notes.
 
 ## Reporting a Vulnerability
 
