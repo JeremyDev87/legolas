@@ -96,9 +96,15 @@ Legolas release automation uses `package.json` as the version source of truth.
 
 Typical release flow:
 
-1. Update `package.json` to the next version.
-2. Verify the Rust CLI reports the same version with `cargo run -q -p legolas-cli -- --version`.
-3. Run:
+1. Start the `Manual Release Bump` workflow from GitHub Actions with the target
+   tag, such as `v1.0.0`. Use `dry_run` first when you only want to validate
+   the bump.
+2. The workflow updates `package.json`, `crates/legolas-cli/Cargo.toml`, and
+   `Cargo.lock`, then opens or reuses a draft bump PR against `master`.
+3. Before merging the bump PR, confirm the PR branch has passed:
+   - `legolas-ci`
+   - `Release Candidate Core Verification` for the exact candidate commit SHA
+4. If validating the same state locally, run:
 
 ```bash
 npm test
@@ -111,8 +117,16 @@ node ./bin/legolas.js --version
 npm run pack:check
 ```
 
-4. Merge the version bump to `master`.
-5. Push a matching git tag such as `v0.1.1`.
-6. GitHub Actions validates the tag, publishes to npm, and then publishes the GitHub release.
+5. Merge the version bump PR to `master` only after those gates pass.
+6. After the merge, confirm `legolas-ci` and `Release Candidate Core
+   Verification` both pass for the merged `master` commit SHA. If the candidate
+   verification did not start automatically, dispatch it with that exact SHA.
+7. Create and push the matching git tag, such as `v1.0.0`, from the verified
+   `master` commit.
+8. The `legolas-release` workflow validates the exact tag, builds native
+   binaries, publishes the npm package, uploads GitHub release assets, and then
+   publishes the GitHub release.
+9. If a tag release must be retried, use the `legolas-release` workflow
+   dispatch with the existing tag rather than creating another tag.
 
 Thank you for helping make Legolas more useful and more trustworthy.
